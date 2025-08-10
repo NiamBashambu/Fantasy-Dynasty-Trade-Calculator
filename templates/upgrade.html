@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+
+{% block title %}Upgrade to Pro - Dynasty Trade Analyzer{% endblock %}
+
+{% block extra_css %}
+<style>
+    .upgrade-hero {
+        text-align: center;
+        padding: 60px 0;
+        background: linear-gradient(135deg, rgba(0, 212, 255, 0.1), rgba(0, 153, 204, 0.1));
+        border-radius: 16px;
+        margin-bottom: 40px;
+    }
+
+    .upgrade-hero h1 {
+        font-size: 3rem;
+        margin-bottom: 20px;
+        background: linear-gradient(135deg, #00d4ff, #0099cc);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    .upgrade-hero p {
+        font-size: 1.2rem;
+        color: #a0aec0;
+        margin-bottom: 30px;
+    }
+
+    .pricing-comparison {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 30px;
+        margin-bottom: 40px;
+    }
+
+    .plan-card {
+        background: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 16px;
+        padding: 30px;
+        text-align: center;
+        position: relative;
+    }
+
+    .plan-card.current {
+        border-color: #666;
+    }
+
+    .plan-card.pro {
+        border-color: #00d4ff;
+        background: rgba(0, 212, 255, 0.05);
+    }
+
+    .plan-card.pro::before {
+        content: 'Recommended';
+        position: absolute;
+        top: -10px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: linear-gradient(135deg, #00d4ff, #0099cc);
+        color: white;
+        padding: 5px 20px;
+        border-radius: 20px;
+        font-size: 0.9rem;
+        font-weight: 600;
+    }
+
+    .plan-name {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-bottom: 10px;
+    }
+
+    .plan-price {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #00d4ff;
+        margin-bottom: 5px;
+    }
+
+    .plan-period {
+        color: #a0aec0;
+        margin-bottom: 30px;
+    }
+
+    .plan-features {
+        list-style: none;
+        margin-bottom: 30px;
+        text-align: left;
+    }
+
+    .plan-features li {
+        padding: 8px 0;
+        color: #e2e8f0;
+        position: relative;
+        padding-left: 25px;
+    }
+
+    .plan-features li::before {
+        content: '✓';
+        color: #00d4ff;
+        font-weight: bold;
+        position: absolute;
+        left: 0;
+    }
+
+    .plan-features li.unavailable {
+        color: #666;
+    }
+
+    .plan-features li.unavailable::before {
+        content: '✗';
+        color: #666;
+    }
+
+    .upgrade-btn {
+        width: 100%;
+        background: linear-gradient(135deg, #00d4ff, #0099cc);
+        color: white;
+        padding: 16px 32px;
+        border: none;
+        border-radius: 8px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        text-decoration: none;
+        display: inline-block;
+    }
+
+    .upgrade-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 15px 30px rgba(0, 212, 255, 0.4);
+    }
+
+    .upgrade-btn:disabled {
+        background: #666;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+    }
+
+    .security-info {
+        background: rgba(255, 255, 255, 0.02);
+        padding: 20px;
+        border-radius: 12px;
+        text-align: center;
+        margin-top: 30px;
+    }
+
+    .security-info h3 {
+        margin-bottom: 15px;
+        color: #00d4ff;
+    }
+
+    .security-badges {
+        display: flex;
+        justify-content: center;
+        gap: 20px;
+        flex-wrap: wrap;
+    }
+
+    .security-badge {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #a0aec0;
+        font-size: 14px;
+    }
+
+    @media (max-width: 768px) {
+        .pricing-comparison {
+            grid-template-columns: 1fr;
+        }
+        
+        .upgrade-hero h1 {
+            font-size: 2rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="upgrade-hero">
+    <h1>Upgrade to Pro</h1>
+    <p>Unlock unlimited AI trade suggestions and advanced dynasty analysis</p>
+</div>
+
+<div class="pricing-comparison">
+    <div class="plan-card current">
+        <div class="plan-name">Current: Free Plan</div>
+        <div class="plan-price">$0</div>
+        <div class="plan-period">Forever</div>
+        <ul class="plan-features">
+            <li>5 AI trade suggestions per session</li>
+            <li>Basic trade calculator</li>
+            <li>Sleeper league integration</li>
+            <li>Strategy-based analysis</li>
+            <li class="unavailable">Unlimited trade suggestions</li>
+            <li class="unavailable">Advanced analytics</li>
+            <li class="unavailable">Trade history tracking</li>
+            <li class="unavailable">Priority support</li>
+        </ul>
+        <button class="upgrade-btn" disabled>Current Plan</button>
+    </div>
+
+    <div class="plan-card pro">
+        <div class="plan-name">Pro Plan</div>
+        <div class="plan-price">$9.99</div>
+        <div class="plan-period">per month</div>
+        <ul class="plan-features">
+            <li>Everything in Free Plan</li>
+            <li>Unlimited AI trade suggestions</li>
+            <li>Advanced trade calculator</li>
+            <li>Advanced analytics dashboard</li>
+            <li>Trade history tracking</li>
+            <li>Custom trade scenarios</li>
+            <li>Priority support</li>
+            <li>Early access to new features</li>
+        </ul>
+        <form action="{{ url_for('create_checkout_session') }}" method="POST">
+            <button type="submit" class="upgrade-btn">Upgrade to Pro</button>
+        </form>
+    </div>
+</div>
+
+<div class="security-info">
+    <h3>🔒 Secure Payment Processing</h3>
+    <div class="security-badges">
+        <div class="security-badge">
+            <i class="fas fa-shield-alt"></i>
+            <span>Powered by Stripe</span>
+        </div>
+        <div class="security-badge">
+            <i class="fas fa-lock"></i>
+            <span>256-bit SSL Encryption</span>
+        </div>
+        <div class="security-badge">
+            <i class="fas fa-credit-card"></i>
+            <span>All Major Cards Accepted</span>
+        </div>
+        <div class="security-badge">
+            <i class="fas fa-undo"></i>
+            <span>Cancel Anytime</span>
+        </div>
+    </div>
+    <p style="margin-top: 15px; color: #a0aec0; font-size: 14px;">
+        Your payment information is processed securely by Stripe. We never store your credit card details.
+    </p>
+</div>
+
+<div class="card" style="margin-top: 30px;">
+    <h3>💡 Why Upgrade?</h3>
+    <div class="grid" style="margin-top: 20px;">
+        <div>
+            <h4 style="color: #00d4ff; margin-bottom: 10px;">🚀 Unlimited Analysis</h4>
+            <p style="color: #a0aec0;">Generate as many trade suggestions as you need to find the perfect deals for your dynasty team.</p>
+        </div>
+        <div>
+            <h4 style="color: #00d4ff; margin-bottom: 10px;">📊 Advanced Features</h4>
+            <p style="color: #a0aec0;">Access detailed analytics, trade history, and advanced scenarios to dominate your league.</p>
+        </div>
+        <div>
+            <h4 style="color: #00d4ff; margin-bottom: 10px;">⚡ Priority Support</h4>
+            <p style="color: #a0aec0;">Get help faster with priority customer support and early access to new features.</p>
+        </div>
+        <div>
+            <h4 style="color: #00d4ff; margin-bottom: 10px;">🔄 Cancel Anytime</h4>
+            <p style="color: #a0aec0;">No long-term commitment. Cancel your subscription anytime with just one click.</p>
+        </div>
+    </div>
+</div>
+
+<div style="text-align: center; margin-top: 30px;">
+    <a href="{{ url_for('app_dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+</div>
+{% endblock %}

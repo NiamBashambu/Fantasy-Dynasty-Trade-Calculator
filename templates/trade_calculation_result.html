@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}Trade Calculator Results - Dynasty Trade Analyzer{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 16px;
+        margin: 16px 0;
+    }
+
+    .stat-item {
+        text-align: center;
+        padding: 12px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 8px;
+    }
+
+    .stat-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #00d4ff;
+    }
+
+    .stat-label {
+        font-size: 0.8rem;
+        color: #a0aec0;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .fairness-score {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+
+    .score-bar {
+        flex: 1;
+        height: 8px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 4px;
+        overflow: hidden;
+        position: relative;
+    }
+
+    .score-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #ff4444, #ffaa00, #00ff88);
+        border-radius: 4px;
+        width: var(--score-width);
+    }
+
+    .score-text {
+        font-weight: 600;
+        min-width: 80px;
+    }
+
+    .reasoning {
+        background: rgba(255, 255, 255, 0.03);
+        padding: 16px;
+        border-radius: 8px;
+        font-size: 14px;
+        color: #cbd5e0;
+        line-height: 1.6;
+        margin-bottom: 16px;
+    }
+
+    .team-players {
+        background: rgba(255, 255, 255, 0.05);
+        padding: 16px;
+        border-radius: 8px;
+        margin-bottom: 16px;
+    }
+
+    .team-title {
+        font-weight: 600;
+        color: #00d4ff;
+        margin-bottom: 8px;
+    }
+
+    .player-list {
+        list-style: none;
+    }
+
+    .player-list li {
+        padding: 4px 0;
+        color: #e2e8f0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2>Trade Analysis Results</h2>
+        <a href="{{ url_for('app_dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+    </div>
+    
+    <div class="fairness-score">
+        <span class="score-text">{{ result.fairness_score }}% Fair</span>
+        <div class="score-bar">
+            <div class="score-fill" style="--score-width: {{ result.fairness_score }}%;"></div>
+        </div>
+    </div>
+    
+    <div class="stats-grid">
+        <div class="stat-item">
+            <div class="stat-value">{{ result.teamA_value }}</div>
+            <div class="stat-label">Team A Value</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value">{{ result.teamB_value }}</div>
+            <div class="stat-label">Team B Value</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value">{{ (result.teamA_value - result.teamB_value)|abs }}</div>
+            <div class="stat-label">Value Difference</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value">{{ result.winner }}</div>
+            <div class="stat-label">Winner</div>
+        </div>
+    </div>
+
+    <div class="grid">
+        <div class="team-players">
+            <div class="team-title">Team A Players</div>
+            <ul class="player-list">
+                {% for player in teamA_players %}
+                <li>{{ player }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        
+        <div class="team-players">
+            <div class="team-title">Team B Players</div>
+            <ul class="player-list">
+                {% for player in teamB_players %}
+                <li>{{ player }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+    
+    <div class="reasoning">
+        <strong>Analysis:</strong><br>
+        {{ result.analysis }}
+    </div>
+    
+    {% if result.recommendations %}
+    <div class="reasoning">
+        <strong>Recommendations:</strong><br>
+        {{ result.recommendations }}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
