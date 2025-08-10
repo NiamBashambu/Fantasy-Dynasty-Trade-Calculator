@@ -1,0 +1,334 @@
+{% extends "base.html" %}
+
+{% block title %}League Setup - Dynasty Trade Analyzer{% endblock %}
+
+{% block extra_css %}
+<style>
+    .setup-hero {
+        text-align: center;
+        padding: 40px 0;
+        margin-bottom: 40px;
+    }
+
+    .setup-hero h1 {
+        font-size: 2.5rem;
+        margin-bottom: 15px;
+        background: linear-gradient(135deg, #00d4ff, #0099cc);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    .setup-steps {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        margin-bottom: 40px;
+    }
+
+    .step-card {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+        position: relative;
+    }
+
+    .step-card.completed {
+        border-color: #00ff88;
+        background: rgba(0, 255, 136, 0.05);
+    }
+
+    .step-card.active {
+        border-color: #00d4ff;
+        background: rgba(0, 212, 255, 0.05);
+    }
+
+    .step-number {
+        width: 40px;
+        height: 40px;
+        background: linear-gradient(135deg, #00d4ff, #0099cc);
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        margin: 0 auto 15px;
+    }
+
+    .step-card.completed .step-number {
+        background: linear-gradient(135deg, #00ff88, #00cc66);
+    }
+
+    .step-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-bottom: 10px;
+    }
+
+    .step-description {
+        color: #a0aec0;
+        font-size: 0.9rem;
+    }
+
+    .team-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 16px;
+        margin-top: 20px;
+    }
+
+    .team-card {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+        padding: 16px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        text-align: center;
+    }
+
+    .team-card:hover {
+        border-color: #00d4ff;
+        background: rgba(0, 212, 255, 0.1);
+        transform: translateY(-2px);
+    }
+
+    .team-card.selected {
+        border-color: #00d4ff;
+        background: rgba(0, 212, 255, 0.2);
+    }
+
+    .team-avatar {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        margin: 0 auto 12px;
+        background: linear-gradient(135deg, #00d4ff, #0099cc);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: white;
+    }
+
+    .team-name {
+        font-weight: 600;
+        margin-bottom: 8px;
+        color: #e2e8f0;
+    }
+
+    .team-record {
+        color: #a0aec0;
+        font-size: 0.9rem;
+    }
+
+    .league-info {
+        background: rgba(0, 212, 255, 0.1);
+        border: 1px solid rgba(0, 212, 255, 0.3);
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+
+    .league-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 16px;
+        margin-top: 16px;
+    }
+
+    .league-stat {
+        text-align: center;
+    }
+
+    .stat-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #00d4ff;
+    }
+
+    .stat-label {
+        font-size: 0.8rem;
+        color: #a0aec0;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .progress-bar {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        height: 8px;
+        margin: 20px 0;
+        overflow: hidden;
+    }
+
+    .progress-fill {
+        background: linear-gradient(90deg, #00d4ff, #0099cc);
+        height: 100%;
+        transition: width 0.3s ease;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="setup-hero">
+    <h1>League Setup</h1>
+    <p>Connect your Sleeper league and select your team to get started</p>
+    
+    <!-- Progress Bar -->
+    <div class="progress-bar">
+        <div class="progress-fill" style="width: {% if session.league_data %}{% if session.selected_team %}100%{% else %}66%{% endif %}{% else %}33%{% endif %};"></div>
+    </div>
+</div>
+
+<!-- Setup Steps -->
+<div class="setup-steps">
+    <div class="step-card {% if session.league_data %}completed{% else %}active{% endif %}">
+        <div class="step-number">1</div>
+        <div class="step-title">Connect League</div>
+        <div class="step-description">Enter your Sleeper League ID</div>
+    </div>
+    
+    <div class="step-card {% if session.selected_team %}completed{% elif session.league_data %}active{% endif %}">
+        <div class="step-number">2</div>
+        <div class="step-title">Select Team</div>
+        <div class="step-description">Choose your team from the league</div>
+    </div>
+    
+    <div class="step-card {% if session.selected_team %}active{% endif %}">
+        <div class="step-number">3</div>
+        <div class="step-title">Start Trading</div>
+        <div class="step-description">Generate AI trade suggestions</div>
+    </div>
+</div>
+
+{% if not session.league_data %}
+<!-- Step 1: Connect League -->
+<div class="card">
+    <h3>🔗 Connect Your Sleeper League</h3>
+    <p style="color: #a0aec0; margin-bottom: 20px;">Enter your Sleeper League ID to import your league data and roster information.</p>
+    
+    <form action="{{ url_for('connect_league') }}" method="POST">
+        <div class="form-group">
+            <label for="league-id">Sleeper League ID</label>
+            <input type="text" id="league-id" name="league_id" placeholder="Enter your league ID (e.g., 784962448188375040)" required>
+            <small style="color: #a0aec0; font-size: 12px; margin-top: 8px; display: block;">
+                <strong>How to find your League ID:</strong><br>
+                1. Go to your league on sleeper.com<br>
+                2. Look at the URL: sleeper.com/leagues/<strong>YOUR_LEAGUE_ID</strong><br>
+                3. Copy the long number and paste it above
+            </small>
+        </div>
+        <button type="submit" class="btn">Connect League</button>
+    </form>
+</div>
+
+{% elif not session.selected_team %}
+<!-- Step 2: League Connected - Select Team -->
+<div class="league-info">
+    <h3>✅ League Connected Successfully!</h3>
+    <h4>{{ session.league_data.name }}</h4>
+    
+    <div class="league-stats">
+        <div class="league-stat">
+            <div class="stat-value">{{ session.league_data.total_rosters }}</div>
+            <div class="stat-label">Teams</div>
+        </div>
+        <div class="league-stat">
+            <div class="stat-value">{{ full_league.season if full_league else session.league_data.season }}</div>
+            <div class="stat-label">Season</div>
+        </div>
+        <div class="league-stat">
+            <div class="stat-value">Dynasty</div>
+            <div class="stat-label">Format</div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h3>👥 Select Your Team</h3>
+    <p style="color: #a0aec0; margin-bottom: 20px;">Choose which team is yours from the league roster below.</p>
+    
+    <form action="{{ url_for('select_team') }}" method="POST" id="teamForm">
+        <input type="hidden" id="selectedTeamId" name="team_id" required>
+        
+        <div class="team-grid">
+            {% if full_league and full_league.users %}
+                {% for user in full_league.users %}
+                <div class="team-card" data-team-id="{{ user.user_id }}" data-team-name="{{ user.display_name or ('Team ' ~ loop.index) }}" onclick="selectTeamFromData(this)">
+                    <div class="team-avatar">
+                        {% if user.avatar %}
+                        <img src="https://sleepercdn.com/avatars/{{ user.avatar }}" alt="Avatar" style="width: 100%; height: 100%; border-radius: 50%;">
+                        {% else %}
+                        {{ (user.display_name or 'T')[0]|upper }}
+                        {% endif %}
+                    </div>
+                    <div class="team-name">{{ user.display_name or ('Team ' ~ loop.index) }}</div>
+                    <div class="team-record">{{ user.username or 'Fantasy Manager' }}</div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p style="color: #ff6b6b; text-align: center;">Unable to load team data. Please reconnect to your league.</p>
+            {% endif %}
+        </div>
+        
+        <div style="text-align: center; margin-top: 30px;">
+            <button type="submit" class="btn" id="confirmTeamBtn" style="display: none;">Confirm Team Selection</button>
+        </div>
+    </form>
+</div>
+
+{% else %}
+<!-- Step 3: Setup Complete -->
+<div class="card" style="text-align: center; padding: 40px;">
+    <h2>🎉 Setup Complete!</h2>
+    <p style="color: #a0aec0; margin: 20px 0;">You're all set up and ready to start generating AI trade suggestions.</p>
+    
+    <div class="league-info" style="margin: 30px 0; text-align: left;">
+        <h4>Your Setup:</h4>
+        <div style="margin-top: 15px;">
+            <p><strong>League:</strong> {{ session.league_data.name }}</p>
+            <p><strong>Team:</strong> {{ session.selected_team.display_name }}</p>
+            <p><strong>Plan:</strong> {{ session.user.plan|title }} ({{ session.user.trade_count }}/{{ 'Unlimited' if session.user.plan == 'pro' else '5' }} trades used)</p>
+        </div>
+    </div>
+    
+    <div style="display: flex; gap: 20px; justify-content: center; flex-wrap: wrap;">
+        <a href="{{ url_for('app_dashboard') }}" class="btn">Go to Dashboard</a>
+        <a href="{{ url_for('generate_trades_page') }}" class="btn btn-secondary">Generate Trades</a>
+    </div>
+</div>
+{% endif %}
+
+<script>
+let selectedTeamData = null;
+
+function selectTeamFromData(element) {
+    const teamId = element.dataset.teamId;
+    const teamName = element.dataset.teamName;
+    
+    // Remove previous selection
+    document.querySelectorAll('.team-card').forEach(card => {
+        card.classList.remove('selected');
+    });
+    
+    // Add selection to clicked card
+    element.classList.add('selected');
+    
+    // Update form data
+    document.getElementById('selectedTeamId').value = teamId;
+    selectedTeamData = { id: teamId, name: teamName };
+    
+    // Show confirm button
+    const confirmBtn = document.getElementById('confirmTeamBtn');
+    confirmBtn.style.display = 'inline-block';
+    confirmBtn.textContent = `Confirm: ${teamName}`;
+    
+    console.log('Selected team:', teamName, teamId);
+}
+</script>
+{% endblock %}

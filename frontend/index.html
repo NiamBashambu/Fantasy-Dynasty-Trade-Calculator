@@ -683,6 +683,9 @@
         <div class="modal-content">
             <span class="close" onclick="closeAuthModal()">&times;</span>
             <h2 id="authTitle">Sign In</h2>
+            
+            <!-- Flash Messages in Modal -->
+            <div id="modalMessages" style="margin-bottom: 1rem;"></div>
             <form id="authForm" action="/auth" method="POST">
                 <input type="hidden" id="authMode" name="mode" value="signin">
                 <input type="hidden" id="selectedPlan" name="plan" value="free">
@@ -726,6 +729,8 @@
 
         // Modal functionality
         function openAuthModal(mode) {
+            clearModalMessages(); // Clear any previous messages
+            
             const modal = document.getElementById('authModal');
             const title = document.getElementById('authTitle');
             const modeInput = document.getElementById('authMode');
@@ -774,6 +779,39 @@
                 closeAuthModal();
             }
         }
+
+        // Show error messages in modal
+        function showModalMessage(message, type = 'error') {
+            const modalMessages = document.getElementById('modalMessages');
+            modalMessages.innerHTML = `
+                <div class="alert alert-${type}" style="margin-bottom: 1rem;">
+                    ${message}
+                </div>
+            `;
+        }
+
+        // Clear modal messages
+        function clearModalMessages() {
+            document.getElementById('modalMessages').innerHTML = '';
+        }
+
+        // Check for URL parameters with error messages
+        function checkForErrors() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const error = urlParams.get('error');
+            const message = urlParams.get('message');
+            
+            if (error && message) {
+                openAuthModal('signin');
+                showModalMessage(decodeURIComponent(message), 'error');
+                
+                // Clean up URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        }
+
+        // Initialize error checking
+        document.addEventListener('DOMContentLoaded', checkForErrors);
 
         // Smooth scrolling for navigation links
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {

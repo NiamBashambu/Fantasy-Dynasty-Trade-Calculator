@@ -218,72 +218,75 @@
 <div class="tab-contents">
     <!-- League Setup Tab -->
     <div id="setup-tab" class="tab-content active">
-        <div class="grid">
-            <div class="card">
-                <h3>Connect Your Sleeper League</h3>
-                <form action="{{ url_for('connect_league') }}" method="POST">
-                    <div class="form-group">
-                        <label for="league-id">Sleeper League ID</label>
-                        <input type="text" id="league-id" name="league_id" placeholder="Enter your Sleeper league ID" required>
-                        <small style="color: #a0aec0; font-size: 12px; margin-top: 4px; display: block;">
-                            Find this in your Sleeper league URL: sleeper.com/leagues/{league_id}
-                        </small>
-                    </div>
-                    <button type="submit" class="btn">Connect League</button>
-                </form>
-            </div>
-
-            <div class="card">
-                <h3>Subscription Plan</h3>
-                <form action="{{ url_for('update_plan') }}" method="POST">
-                    <div class="form-group">
-                        <label for="plan-select">Current Plan</label>
-                        <select id="plan-select" name="plan">
-                            <option value="free" {{ 'selected' if session.user and session.user.plan == 'free' else '' }}>Free (5 trades per session)</option>
-                            <option value="pro" {{ 'selected' if session.user and session.user.plan == 'pro' else '' }}>Pro (Unlimited trades)</option>
-                        </select>
-                    </div>
-                    <p style="color: #a0aec0; font-size: 14px; margin: 12px 0;">
-                        Free plan includes basic trade suggestions. Pro plan unlocks unlimited trades and advanced analysis.
-                    </p>
-                    <button type="submit" class="btn btn-secondary">Update Plan</button>
-                </form>
-            </div>
-        </div>
-
-        {% if session.league_data %}
-        <!-- League Information (shown after connecting) -->
         <div class="card">
-            <h3>Connected League</h3>
-            <div class="stats-grid">
-                <div class="stat-item">
-                    <div class="stat-value">{{ session.league_data.name }}</div>
-                    <div class="stat-label">League Name</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-value">{{ session.league_data.total_rosters }}</div>
-                    <div class="stat-label">Teams</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-value">Dynasty</div>
-                    <div class="stat-label">Type</div>
-                </div>
+            <h3>⚙️ League Setup</h3>
+            {% if session.league_data and session.selected_team %}
+            <div style="background: rgba(0, 255, 136, 0.1); border: 1px solid rgba(0, 255, 136, 0.3); border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+                <h4 style="color: #00ff88; margin-bottom: 10px;">✅ Setup Complete!</h4>
+                <p><strong>League:</strong> {{ session.league_data.name }}</p>
+                <p><strong>Team:</strong> {{ session.selected_team.display_name }}</p>
+                <p><strong>Status:</strong> Ready to generate trades</p>
             </div>
             
-            <form action="{{ url_for('select_team') }}" method="POST">
+            <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                <a href="{{ url_for('league_setup') }}" class="btn btn-secondary">Manage League Setup</a>
+                <button class="btn" onclick="showTab('generator')">Generate Trades</button>
+            </div>
+            
+            {% elif session.league_data %}
+            <div style="background: rgba(255, 170, 0, 0.1); border: 1px solid rgba(255, 170, 0, 0.3); border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+                <h4 style="color: #ffaa00; margin-bottom: 10px;">⚠️ Team Selection Required</h4>
+                <p><strong>League:</strong> {{ session.league_data.name }} (Connected)</p>
+                <p><strong>Next Step:</strong> Select your team to complete setup</p>
+            </div>
+            
+            <a href="{{ url_for('league_setup') }}" class="btn">Complete League Setup</a>
+            
+            {% else %}
+            <div style="background: rgba(0, 212, 255, 0.1); border: 1px solid rgba(0, 212, 255, 0.3); border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+                <h4 style="color: #00d4ff; margin-bottom: 10px;">🔗 Connect Your League</h4>
+                <p>Connect your Sleeper league to start generating AI trade suggestions personalized for your team.</p>
+            </div>
+            
+            <a href="{{ url_for('league_setup') }}" class="btn">Start League Setup</a>
+            {% endif %}
+            
+            <div style="margin-top: 30px; padding: 16px; background: rgba(255, 255, 255, 0.02); border-radius: 8px;">
+                <h4 style="color: #00d4ff; margin-bottom: 10px;">💡 What you'll get:</h4>
+                <ul style="color: #a0aec0; margin-left: 20px;">
+                    <li>AI analysis of your current roster</li>
+                    <li>Personalized trade suggestions based on your team needs</li>
+                    <li>Real-time data from your Sleeper league</li>
+                    <li>Strategy-based recommendations (contending vs rebuilding)</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>💰 Subscription Plan</h3>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <div>
+                    <p><strong>Current Plan:</strong> {{ session.user.plan|title if session.user else 'Free' }}</p>
+                    <p style="color: #a0aec0; font-size: 14px;">
+                        Trades Used: {{ session.user.trade_count if session.user else 0 }}/{{ 'Unlimited' if session.user and session.user.plan == 'pro' else '5' }}
+                    </p>
+                </div>
+                {% if session.user and session.user.plan == 'free' %}
+                <a href="{{ url_for('upgrade') }}" class="btn btn-secondary">Upgrade to Pro</a>
+                {% endif %}
+            </div>
+            
+            <form action="{{ url_for('update_plan') }}" method="POST">
                 <div class="form-group">
-                    <label for="team-select">Select Your Team</label>
-                    <select id="team-select" name="team_id" required>
-                        <option value="">Choose your team...</option>
-                        {% for user in session.league_data.users %}
-                        <option value="{{ user.user_id }}">{{ user.display_name or 'Unknown Team' }}</option>
-                        {% endfor %}
+                    <label for="plan-select">Change Plan</label>
+                    <select id="plan-select" name="plan">
+                        <option value="free" {{ 'selected' if session.user and session.user.plan == 'free' else '' }}>Free (5 trades per session)</option>
+                        <option value="pro" {{ 'selected' if session.user and session.user.plan == 'pro' else '' }}>Pro (Unlimited trades)</option>
                     </select>
                 </div>
-                <button type="submit" class="btn">Select Team</button>
+                <button type="submit" class="btn btn-secondary btn-small">Update Plan</button>
             </form>
         </div>
-        {% endif %}
     </div>
 
     <!-- Trade Generator Tab -->
@@ -352,7 +355,7 @@
     </div>
 
     <!-- Trade Calculator Tab -->
-    <div class="tab-content calculator-content">
+    <div id="calculator-tab" class="tab-content">
         <div class="card">
             <h3>📊 Trade Value Calculator</h3>
             <p style="color: #a0aec0; margin-bottom: 20px;">Compare the value of any trade proposal with AI-powered analysis.</p>
@@ -390,37 +393,43 @@
 </div>
 
 <script>
-// Debug: Check if tabs are working
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('Dashboard loaded');
+// Tab switching functionality
+function showTab(tabName) {
+    console.log('Switching to tab:', tabName);
     
-    // Check if tab content is visible
-    const setupContent = document.querySelector('.setup-content');
-    const generatorContent = document.querySelector('.generator-content');
-    const calculatorContent = document.querySelector('.calculator-content');
-    
-    console.log('Setup content visible:', setupContent ? window.getComputedStyle(setupContent).display : 'not found');
-    console.log('Generator content visible:', generatorContent ? window.getComputedStyle(generatorContent).display : 'not found');
-    console.log('Calculator content visible:', calculatorContent ? window.getComputedStyle(calculatorContent).display : 'not found');
-    
-    // Add click listeners to debug tab switching
-    document.querySelectorAll('.tab-nav input[type="radio"]').forEach(radio => {
-        radio.addEventListener('change', function() {
-            console.log('Tab changed to:', this.id);
-            
-            // Force refresh visibility after tab change
-            setTimeout(() => {
-                console.log('After tab change:');
-                console.log('- Setup:', setupContent ? window.getComputedStyle(setupContent).display : 'not found');
-                console.log('- Generator:', generatorContent ? window.getComputedStyle(generatorContent).display : 'not found');
-                console.log('- Calculator:', calculatorContent ? window.getComputedStyle(calculatorContent).display : 'not found');
-            }, 100);
-        });
+    // Hide all tab contents
+    document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active');
     });
     
-    // Check if radio buttons are working
-    console.log('Radio buttons found:', document.querySelectorAll('.tab-nav input[type="radio"]').length);
-    console.log('Labels found:', document.querySelectorAll('.tab-nav label').length);
+    // Remove active class from all tab buttons
+    document.querySelectorAll('.tab-button').forEach(button => {
+        button.classList.remove('active');
+    });
+    
+    // Show selected tab content
+    const selectedTab = document.getElementById(tabName + '-tab');
+    if (selectedTab) {
+        selectedTab.classList.add('active');
+        console.log('Activated tab:', tabName);
+    } else {
+        console.error('Tab not found:', tabName + '-tab');
+    }
+    
+    // Add active class to clicked button
+    event.target.classList.add('active');
+}
+
+// Initialize tabs on page load
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Dashboard loaded - JavaScript tabs enabled');
+    
+    // Ensure first tab is visible
+    const setupTab = document.getElementById('setup-tab');
+    if (setupTab) {
+        setupTab.classList.add('active');
+        console.log('Setup tab initialized as active');
+    }
 });
 </script>
 {% endblock %}

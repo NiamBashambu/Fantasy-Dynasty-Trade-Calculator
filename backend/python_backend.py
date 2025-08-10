@@ -3,7 +3,7 @@ import requests
 import json
 import os
 from datetime import datetime, timedelta
-import openai
+from openai import OpenAI
 import stripe
 from dataclasses import dataclass
 from typing import List, Dict, Optional, Any
@@ -21,8 +21,9 @@ app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here')
 
 # Configuration
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
+openai_client = None
 if OPENAI_API_KEY:
-    openai.api_key = OPENAI_API_KEY
+    openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Stripe Configuration
 STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', 'pk_test_your_publishable_key_here')
@@ -159,11 +160,16 @@ class SleeperAPI:
     def get_league(league_id: str) -> Optional[Dict[str, Any]]:
         """Get league information"""
         try:
-            response = requests.get(f"{SLEEPER_BASE_URL}/league/{league_id}")
+            url = f"{SLEEPER_BASE_URL}/league/{league_id}"
+            logger.info(f"Fetching league data from: {url}")
+            response = requests.get(url)
             response.raise_for_status()
-            return response.json()
+            data = response.json()
+            logger.info(f"League data received: {data.get('name', 'Unknown')} ({data.get('total_rosters', 0)} teams)")
+            return data
         except requests.RequestException as e:
             logger.error(f"Error fetching league {league_id}: {e}")
+            logger.error(f"Response status: {response.status_code if 'response' in locals() else 'No response'}")
             return None
     
     @staticmethod
@@ -203,8 +209,8 @@ class TradeAnalyzer:
     """AI-powered trade analysis using OpenAI"""
     
     def __init__(self, api_key: str = None):
-        if api_key:
-            openai.api_key = api_key
+        # API key is handled globally now
+        pass
     
     def generate_trade_suggestions(
         self, 
@@ -216,7 +222,7 @@ class TradeAnalyzer:
     ) -> List[Dict[str, Any]]:
         """Generate AI-powered trade suggestions"""
         
-        if not OPENAI_API_KEY:
+        if not openai_client:
             # Return mock trades if no OpenAI key
             return self._generate_mock_trades(league_data, user_roster, preferences)
         
@@ -259,7 +265,7 @@ class TradeAnalyzer:
             Make sure trades are realistic, fair, and align with the user's stated preferences.
             """
             
-            response = openai.ChatCompletion.create(
+            response = openai_client.chat.completions.create(
                 model="gpt-4",
                 messages=[
                     {"role": "system", "content": "You are an expert dynasty fantasy football analyst."},
@@ -381,7 +387,7 @@ class TradeAnalyzer:
     ) -> Dict[str, Any]:
         """Calculate trade value between two sets of players"""
         
-        if not OPENAI_API_KEY:
+        if not openai_client:
             return self._mock_trade_calculation(teamA_players, teamB_players)
         
         try:
@@ -404,7 +410,7 @@ class TradeAnalyzer:
             Consider current player values, age, injury history, and dynasty relevance.
             """
             
-            response = openai.ChatCompletion.create(
+            response = openai_client.chat.completions.create(
                 model="gpt-4",
                 messages=[
                     {"role": "system", "content": "You are an expert dynasty fantasy football analyst."},
@@ -590,8 +596,12 @@ def authenticate():
     else:  # signin
         user = AuthManager.authenticate_user(email, password)
         if not user:
-            flash('Invalid email or password', 'error')
-            return redirect(url_for('landing'))
+            # Check if user exists but wrong password
+            user_exists = any(u.email.lower() == email.lower() for u in users_db.values())
+            if user_exists:
+                return redirect(url_for('landing') + '?error=1&message=' + 'Invalid password. Please try again.')
+            else:
+                return redirect(url_for('landing') + '?error=1&message=' + 'No account found with this email. Please sign up first.')
         
         # Create session
         session_token = AuthManager.create_session(user)
@@ -624,40 +634,58 @@ def connect_league():
     """Connect to Sleeper league"""
     league_id = request.form.get('league_id', '').strip()
     
+    logger.info(f"Attempting to connect to league: {league_id}")
+    
     if not league_id:
         flash('Please enter a valid league ID', 'error')
-        return redirect(url_for('app_dashboard'))
+        logger.warning("No league ID provided")
+        return redirect(url_for('league_setup'))
     
     # Connect to league
     league = dynasty_app.connect_league(league_id)
     
     if not league:
-        flash('Failed to connect to league. Please check your league ID.', 'error')
-        return redirect(url_for('app_dashboard'))
+        flash('Failed to connect to league. Please check your league ID and ensure it exists.', 'error')
+        logger.error(f"Failed to connect to league: {league_id}")
+        return redirect(url_for('league_setup'))
     
-    # Store league data in session
+    # Store minimal league data in session (avoid cookie size limit)
     session['league_data'] = {
         'league_id': league.league_id,
         'name': league.name,
         'total_rosters': league.total_rosters,
-        'users': league.users,
-        'rosters': league.rosters
+        'connected': True
     }
     
+    # Store full league data in memory cache for this session
+    if not hasattr(dynasty_app, 'league_cache'):
+        dynasty_app.league_cache = {}
+    dynasty_app.league_cache[league.league_id] = league
+    
+    logger.info(f"Successfully connected to league: {league.name} (ID: {league_id})")
     flash('League connected successfully!', 'success')
-    return redirect(url_for('app_dashboard'))
+    return redirect(url_for('league_setup'))
 
 @app.route('/league-setup')
 @require_auth
 def league_setup():
     """League setup page with team selection"""
-    league_data = session.get('league_data')
+    # Get full league data if connected
+    full_league = None
+    if 'league_data' in session:
+        full_league = get_league_from_cache()
     
-    if not league_data:
-        flash('Please connect to a league first', 'error')
-        return redirect(url_for('app_dashboard'))
+    return render_template('league_setup.html', full_league=full_league)
+
+@app.route('/generate-trades-page')
+@require_auth
+def generate_trades_page():
+    """Direct link to trade generation"""
+    if not session.get('league_data') or not session.get('selected_team'):
+        flash('Please complete league setup first', 'error')
+        return redirect(url_for('league_setup'))
     
-    return render_template('dashboard.html')
+    return redirect(url_for('app_dashboard') + '#generator')
 
 @app.route('/select-team', methods=['POST'])
 @require_auth
@@ -668,11 +696,17 @@ def select_team():
     
     if not team_id or not league_data:
         flash('Please select a valid team', 'error')
-        return redirect(url_for('app_dashboard'))
+        return redirect(url_for('league_setup'))
+    
+    # Get full league data from cache
+    full_league = get_league_from_cache()
+    if not full_league:
+        flash('League data not found. Please reconnect to your league.', 'error')
+        return redirect(url_for('league_setup'))
     
     # Find user info
     user_info = None
-    for user in league_data['users']:
+    for user in full_league.users:
         if user['user_id'] == team_id:
             user_info = user
             break
@@ -689,7 +723,7 @@ def select_team():
     }
     
     flash(f'Team "{user_info.get("display_name")}" selected successfully!', 'success')
-    return redirect(url_for('app_dashboard'))
+    return redirect(url_for('league_setup'))
 
 @app.route('/trade-generator')
 @require_auth
@@ -944,6 +978,21 @@ def not_found(error):
 @app.errorhandler(500)
 def internal_error(error):
     return render_template('500.html'), 500
+
+def get_league_from_cache():
+    """Get full league data from cache"""
+    if 'league_data' not in session:
+        return None
+    
+    league_id = session['league_data'].get('league_id')
+    if not league_id:
+        return None
+        
+    if hasattr(dynasty_app, 'league_cache') and league_id in dynasty_app.league_cache:
+        return dynasty_app.league_cache[league_id]
+    
+    # If not in cache, try to reconnect
+    return dynasty_app.connect_league(league_id)
 
 @app.context_processor
 def inject_session_data():
