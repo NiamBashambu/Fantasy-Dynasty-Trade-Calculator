@@ -337,7 +337,25 @@
                     <textarea id="additional-notes" name="additional_notes" rows="3" placeholder="Any specific players you want to trade or avoid, timeline preferences, etc."></textarea>
                 </div>
                 
+                {% if session.user and session.user.plan == 'free' %}
+                    {% if session.user.trade_count >= 5 %}
+                    <div class="alert alert-error" style="margin-bottom: 20px;">
+                        <strong>🚫 Trade Limit Reached:</strong> You've used all 5 free trades. 
+                        <a href="{{ url_for('upgrade') }}" style="color: #00d4ff; text-decoration: underline;">Upgrade to Pro</a> for unlimited trades at just $5/month!
+                    </div>
+                    <button type="submit" class="btn" disabled>Trade Limit Reached - Upgrade to Continue</button>
+                    {% elif session.user.trade_count >= 3 %}
+                    <div class="alert alert-warning" style="margin-bottom: 20px;">
+                        <strong>⚠️ Almost at limit:</strong> You have {{ 5 - session.user.trade_count }} trade{{ 's' if (5 - session.user.trade_count) != 1 else '' }} remaining. 
+                        <a href="{{ url_for('upgrade') }}" style="color: #00d4ff; text-decoration: underline;">Upgrade to Pro</a> for unlimited access!
+                    </div>
+                    <button type="submit" class="btn">Generate Trade Suggestions ({{ 5 - session.user.trade_count }} left)</button>
+                    {% else %}
+                    <button type="submit" class="btn">Generate Trade Suggestions</button>
+                    {% endif %}
+                {% else %}
                 <button type="submit" class="btn">Generate Trade Suggestions</button>
+                {% endif %}
             </form>
             {% else %}
             <div class="alert alert-info">

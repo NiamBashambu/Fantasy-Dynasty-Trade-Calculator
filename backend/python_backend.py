@@ -768,16 +768,14 @@ def generate_trades():
         additional_notes=request.form.get('additional_notes', '')
     )
     
-    # Create league object
-    league = League(
-        league_id=league_data['league_id'],
-        name=league_data['name'],
-        total_rosters=league_data['total_rosters'],
-        settings={},
-        season='2025',
-        users=league_data['users'],
-        rosters=league_data['rosters']
-    )
+    # Get full league data from cache
+    full_league = get_league_from_cache()
+    if not full_league:
+        flash('League data not found. Please reconnect to your league.', 'error')
+        return redirect(url_for('league_setup'))
+    
+    # Use the full league object
+    league = full_league
     
     # Get user's roster
     user_roster = dynasty_app.get_user_roster(league, selected_team['user_id'])
@@ -794,8 +792,12 @@ def generate_trades():
         league, user_roster, all_players, preferences, max_suggestions
     )
     
-    # Update trade count in database
+    # Update trade count in database (in-memory for now)
     current_user.trade_count += 1
+    
+    # Update the in-memory user database
+    if current_user.email in users_db:
+        users_db[current_user.email].trade_count = current_user.trade_count
     
     # Update session
     session['user']['trade_count'] = current_user.trade_count
@@ -820,11 +822,16 @@ def calculate_trade():
     
     if not teamA_players_text or not teamB_players_text:
         flash('Please enter players for both teams', 'error')
-        return redirect(url_for('trade_calculator'))
+        return redirect(url_for('app_dashboard') + '#calculator')
     
     # Parse player lists
     teamA_players = [p.strip() for p in teamA_players_text.split('\n') if p.strip()]
     teamB_players = [p.strip() for p in teamB_players_text.split('\n') if p.strip()]
+    
+    # Validate that we have actual players after parsing
+    if not teamA_players or not teamB_players:
+        flash('Please enter at least one player for each team', 'error')
+        return redirect(url_for('app_dashboard') + '#calculator')
     
     # Get all players data
     all_players = dynasty_app.get_all_players()
@@ -856,6 +863,11 @@ def update_plan():
     # Update user plan
     current_user.plan = plan
     current_user.trade_count = 0  # Reset count on plan change
+    
+    # Update the in-memory user database
+    if current_user.email in users_db:
+        users_db[current_user.email].plan = plan
+        users_db[current_user.email].trade_count = 0
     
     # Update session
     session['user']['plan'] = plan
@@ -905,9 +917,9 @@ def create_checkout_session():
                     'currency': 'usd',
                     'product_data': {
                         'name': 'Dynasty Trade Analyzer Pro',
-                        'description': 'Unlimited AI trade suggestions and advanced features'
+                        'description': 'Unlimited AI trade suggestions and advanced features - Only $5/month!'
                     },
-                    'unit_amount': 999,  # $9.99 in cents
+                    'unit_amount': 500,  # $5.00 in cents
                     'recurring': {
                         'interval': 'month'
                     }

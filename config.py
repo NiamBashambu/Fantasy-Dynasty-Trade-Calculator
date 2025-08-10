@@ -37,7 +37,7 @@ class Config:
     
     # Trade Limits
     FREE_PLAN_TRADE_LIMIT = 5
-    PRO_PLAN_PRICE = 999  # $9.99 in cents
+    PRO_PLAN_PRICE = 500  # $5.00 in cents
     
     # Security Settings
     PASSWORD_MIN_LENGTH = 8
