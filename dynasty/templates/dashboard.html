@@ -11,8 +11,38 @@
   {% if standing %}
     <p class="mt"><span class="badge good">Roster value rank {{ standing[0] }} of {{ standing[1] }}</span></p>
   {% endif %}
+  {% if profile %}
+    <div class="stat-grid">
+      <div class="stat"><span class="muted small">Lineup value over replacement</span><b>{{ profile.vorp|num }}</b>
+        {% if vorp_rank %}<span class="muted small">rank {{ vorp_rank[0] }} of {{ vorp_rank[1] }}</span>{% endif %}</div>
+      <div class="stat"><span class="muted small">Starting lineup value</span><b>{{ profile.lineup_value|num }}</b></div>
+    </div>
+  {% endif %}
   <p class="mt"><a class="btn btn-secondary btn-small" href="{{ url_for('main.team') }}">Change team</a></p>
 </div>
+
+{% if profile and league_needs %}
+<div class="card">
+  <h3>Roster needs by position</h3>
+  <p class="muted small">
+    Need compares your starters at each position with the league's median starter (0 means strong).
+    Surplus is bench value above the free-agent replacement level that you could trade away.
+  </p>
+  <table>
+    <thead><tr><th>Position</th><th class="num">Need</th><th class="num">Surplus</th><th class="num">Replacement value</th></tr></thead>
+    <tbody>
+      {% for pos in positions %}
+      <tr>
+        <td>{{ pos }}</td>
+        <td class="num">{{ '%.2f'|format(profile.need.get(pos, 0)) }}</td>
+        <td class="num">{{ '%.2f'|format(profile.surplus.get(pos, 0)) }}</td>
+        <td class="num">{{ league_needs.replacement.get(pos, 0)|num }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 
 <div class="card">
   <h3>Find trades</h3>
@@ -54,7 +84,7 @@
   {% if roster %}
   <table>
     <thead>
-      <tr><th>Asset</th><th>Pos</th><th>Team</th><th class="num">Age</th><th class="num">Rank</th><th class="num">Value</th></tr>
+      <tr><th>Asset</th><th>Pos</th><th>Team</th><th class="num">Age</th><th class="num">Rank</th><th class="num">Value</th><th>Model</th></tr>
     </thead>
     <tbody>
       {% for a in roster %}
@@ -64,12 +94,17 @@
         <td>{{ a.team or '' }}</td>
         <td class="num">{{ '%.1f'|format(a.age) if a.age else '' }}</td>
         <td class="num">{{ a.rank }}</td>
-        <td class="num">{{ a.value|num }}</td>
+        <td class="num">{{ a.value|num }}{% if a.estimated %}*{% endif %}</td>
+        <td>{% set e = edge_for(a.key, num_qbs) %}{% if e %}<span class="badge {{ 'good' if e.signal == 'buy' else ('bad' if e.signal == 'sell' else 'neutral') }}">{{ e.label }}</span>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
-  <p class="muted small mt">Only players and picks with a market value are listed. Draft picks include trades recorded in Sleeper.</p>
+  <p class="muted small mt">
+    Draft picks include trades recorded in Sleeper. * marks a model-estimated value for a deep bench player
+    the market does not price. The Model column compares market price with what similar production, age,
+    and draft profiles are priced at (see <a href="{{ url_for('main.insights_page') }}">Insights</a>).
+  </p>
   {% else %}
     <p class="muted">Trade values are not available right now. Try again in a few minutes.</p>
   {% endif %}

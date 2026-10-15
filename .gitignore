@@ -6,3 +6,9 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .cache/
+
+# Data science pipeline (regenerable)
+/data/
+notebooks/.ipynb_checkpoints/
+.ruff_cache/
+.mypy_cache/

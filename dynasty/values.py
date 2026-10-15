@@ -14,10 +14,12 @@ import tempfile
 import threading
 import time
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
+
+from . import insights
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +35,9 @@ class ValueSettings:
     num_qbs: int = 1
     ppr: float = 1.0
     num_teams: int = 12
+    # Per-reception TE bonus. FantasyCalc's public endpoint does not price it, so it
+    # is applied after fetching (see adjust_book) and is not part of the fetch key.
+    te_premium: float = 0.0
 
     def normalized(self) -> "ValueSettings":
         num_qbs = 2 if self.num_qbs >= 2 else 1
@@ -40,9 +45,11 @@ class ValueSettings:
         teams = max(8, min(16, int(self.num_teams)))
         if teams % 2:
             teams += 1
-        return ValueSettings(num_qbs=num_qbs, ppr=ppr, num_teams=teams)
+        te = min((0.0, 0.5, 1.0), key=lambda option: abs(option - max(0.0, self.te_premium)))
+        return ValueSettings(num_qbs=num_qbs, ppr=ppr, num_teams=teams, te_premium=te)
 
     def cache_key(self) -> str:
+        """Key for fetched data. TE premium is excluded because it is applied after the fetch."""
         return f"q{self.num_qbs}_p{self.ppr}_t{self.num_teams}"
 
 
@@ -59,6 +66,7 @@ class Asset:
     redraft_value: int
     rank: int
     kind: str  # "player" or "pick"
+    estimated: bool = False  # True for model-estimated bench values (not market prices)
 
     @property
     def is_pick(self) -> bool:
@@ -195,6 +203,49 @@ def _parse_book(payload: List[Dict[str, Any]]) -> ValueBook:
     return ValueBook(assets)
 
 
+def adjust_book(book: ValueBook, settings: ValueSettings) -> ValueBook:
+    """Apply data-derived adjustments to a market book.
+
+    * Position multipliers fitted on real trades (only positions whose effect is
+      statistically distinguishable from zero; see ``datascience/backtest.py``).
+    * TE premium, scaled by how reception-heavy starting tight ends are.
+    * Model-estimated values for rostered players the market does not price.
+    """
+    multipliers = insights.position_multipliers()
+    te_mult = insights.te_premium_multiplier(settings.te_premium)
+    assets: List[Asset] = []
+    for a in book.assets:
+        factor = 1.0 if a.is_pick else multipliers.get(a.position, 1.0)
+        if a.position == "TE":
+            factor *= te_mult
+        if factor != 1.0:
+            a = replace(a, value=int(round(a.value * factor)), redraft_value=int(round(a.redraft_value * factor)))
+        assets.append(a)
+    known = {a.key for a in assets}
+    for sleeper_id, info in insights.bench_values(settings.num_qbs).items():
+        if sleeper_id in known:
+            continue
+        value = int(info.get("value", 0))
+        if value <= 0:
+            continue
+        factor = te_mult if info.get("position") == "TE" else 1.0
+        assets.append(
+            Asset(
+                key=str(sleeper_id),
+                name=str(info.get("name")),
+                position=str(info.get("position")),
+                team=info.get("team"),
+                age=info.get("age"),
+                value=int(value * factor),
+                redraft_value=int(value * factor),
+                rank=0,
+                kind="player",
+                estimated=True,
+            )
+        )
+    return ValueBook(assets)
+
+
 class ValuesClient:
     def __init__(
         self,
@@ -203,7 +254,9 @@ class ValuesClient:
         ttl: float = 6 * 3600,
         cache_dir: Optional[str] = None,
         http: Optional[requests.Session] = None,
+        adjust: bool = True,
     ):
+        self.adjust = adjust
         self.base_url = base_url
         self.timeout = timeout
         self.ttl = ttl
@@ -215,6 +268,10 @@ class ValuesClient:
     # -- public ---------------------------------------------------------
     def get_book(self, settings: Optional[ValueSettings] = None) -> ValueBook:
         settings = (settings or ValueSettings()).normalized()
+        book = self._get_market_book(settings)
+        return adjust_book(book, settings) if self.adjust else book
+
+    def _get_market_book(self, settings: ValueSettings) -> ValueBook:
         key = settings.cache_key()
         now = time.monotonic()
 
@@ -230,13 +287,13 @@ class ValuesClient:
                 logger.warning("Could not refresh values (%s): %s", key, exc)
                 if entry:
                     return entry[1]  # stale copy in memory
-                book = self._read_disk(key)
-                if book is None:
+                cached = self._read_disk(key)
+                if cached is None:
                     raise ValuesUnavailable(
                         "Trade values are temporarily unavailable. Please try again soon."
                     ) from exc
-                self._books[key] = (now - self.ttl + 300, book)  # retry in five minutes
-                return book
+                self._books[key] = (now - self.ttl + 300, cached)  # retry in five minutes
+                return cached
 
             self._books[key] = (now, book)
             self._write_disk(key, payload)
@@ -244,16 +301,13 @@ class ValuesClient:
 
     # -- internals ------------------------------------------------------
     def _fetch(self, settings: ValueSettings) -> List[Dict[str, Any]]:
-        response = self.http.get(
-            self.base_url,
-            params={
-                "isDynasty": "true",
-                "numQbs": settings.num_qbs,
-                "numTeams": settings.num_teams,
-                "ppr": settings.ppr,
-            },
-            timeout=self.timeout,
-        )
+        params: Dict[str, Any] = {
+            "isDynasty": "true",
+            "numQbs": settings.num_qbs,
+            "numTeams": settings.num_teams,
+            "ppr": settings.ppr,
+        }
+        response = self.http.get(self.base_url, params=params, timeout=self.timeout)
         response.raise_for_status()
         data = response.json()
         if not isinstance(data, list):
@@ -270,8 +324,9 @@ class ValuesClient:
         if not path:
             return
         try:
-            os.makedirs(self.cache_dir, exist_ok=True)
-            fd, tmp = tempfile.mkstemp(dir=self.cache_dir, suffix=".tmp")
+            cache_dir = os.path.dirname(path)
+            os.makedirs(cache_dir, exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=cache_dir, suffix=".tmp")
             with os.fdopen(fd, "w") as handle:
                 json.dump(payload, handle)
             os.replace(tmp, path)

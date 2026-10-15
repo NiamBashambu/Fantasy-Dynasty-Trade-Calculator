@@ -1,10 +1,12 @@
 """Dynasty Trade Analyzer: a database-free Flask app."""
 
 import logging
+import time
+import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from flask import Flask, render_template, request
+from flask import Flask, g, render_template, request
 from flask_wtf.csrf import CSRFError, CSRFProtect
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -15,6 +17,7 @@ from .sleeper import SleeperClient
 from .values import ValuesClient
 
 csrf = CSRFProtect()
+access_log = logging.getLogger("dynasty.access")
 
 
 @dataclass
@@ -74,6 +77,24 @@ def create_app(config: Optional[Dict[str, Any]] = None, services: Optional[Servi
             return f"{float(value):,.0f}"
         except (TypeError, ValueError):
             return str(value)
+
+    @app.before_request
+    def _start_request():
+        incoming = (request.headers.get("X-Request-ID") or "")[:64]
+        safe = incoming if incoming and incoming.replace("-", "").replace("_", "").isalnum() else ""
+        g.request_id = safe or uuid.uuid4().hex[:12]
+        g.started = time.monotonic()
+
+    @app.after_request
+    def _log_request(response):
+        request_id = g.get("request_id", "-")
+        response.headers["X-Request-ID"] = request_id
+        if request.path != "/health" and not request.path.startswith("/static/"):
+            elapsed = (time.monotonic() - g.get("started", time.monotonic())) * 1000
+            access_log.info(
+                "rid=%s %s %s -> %s %.0fms", request_id, request.method, request.path, response.status_code, elapsed
+            )
+        return response
 
     @app.after_request
     def _security_headers(response):

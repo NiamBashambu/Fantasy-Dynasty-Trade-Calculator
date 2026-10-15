@@ -1,7 +1,17 @@
 name: tests
 on: [push, pull_request]
 jobs:
-  pytest:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check .
+      - run: mypy dynasty
+  web:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -12,4 +22,14 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: pip install -r requirements-dev.txt
+      - run: pytest -q  # data science tests skip themselves when pandas is absent
+  datascience:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements-ds.txt
+      - run: mypy dynasty datascience
       - run: pytest -q

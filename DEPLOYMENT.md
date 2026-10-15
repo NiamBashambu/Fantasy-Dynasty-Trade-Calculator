@@ -51,6 +51,14 @@ Set `TRUST_PROXY=1` (on by default in production) so rate limiting sees the real
 - Trade values are also written to `CACHE_DIR` (default `./.cache`). On platforms with ephemeral disks this simply starts empty after each deploy. It is only a safety net if FantasyCalc is briefly down.
 - Restarting or redeploying loses nothing important. Users stay connected because their league and team IDs are in the cookie.
 
+## Data artifacts
+
+`dynasty/data/*.json` (calibration, model edges, aging curves, value history) ships with the repository and is read at startup, so the host needs no data science libraries. Refresh them on your own machine with `python -m datascience.run_all` and commit the result. If the files are missing the app falls back to plain market values and the earlier default constants.
+
+## Request IDs and rate limits
+
+Each response carries an `X-Request-ID` header and access lines are logged with the same ID. Application rate limits are per process; for strict limits across several instances, configure them at your proxy or CDN.
+
 ## Smoke test after deploying
 
 ```bash

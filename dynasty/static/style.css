@@ -99,3 +99,20 @@ footer { text-align: center; color: #718096; font-size: 13px; padding: 24px 0; }
 @media (max-width: 700px) {
   .trade-sides { grid-template-columns: 1fr; }
 }
+
+/* Data-science additions */
+.suggest-list { position: absolute; z-index: 20; list-style: none; background: #1a2332; border: 1px solid rgba(255,255,255,.2); border-radius: 8px; max-height: 260px; overflow-y: auto; }
+.suggest-list li { padding: 8px 12px; cursor: pointer; }
+.suggest-list li:hover { background: rgba(0,212,255,.15); }
+.history-list { list-style: none; }
+.history-list li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.08); }
+.badge.bad { background: rgba(220,38,127,.15); color: #fbb6ce; }
+.badge.neutral { background: rgba(255,255,255,.08); color: #cbd5e0; }
+.share-row { display: flex; gap: 8px; align-items: center; }
+.share-row input { flex: 1; }
+.spark { vertical-align: middle; }
+.spark polyline { fill: none; stroke: #00d4ff; stroke-width: 1.5; }
+.need-bar { display: inline-block; height: 8px; border-radius: 4px; background: #ecc94b; vertical-align: middle; }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 12px 0; }
+.stat { background: rgba(255,255,255,.04); border-radius: 10px; padding: 12px; }
+.stat b { display: block; font-size: 22px; }

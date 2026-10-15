@@ -8,7 +8,9 @@ There is **no database and no user accounts**. League data comes live from the S
 
 - **Trade calculator**: enter players and draft picks for each side (for example `Ja'Marr Chase` and `2027 1st`) and get a fairness score, a verdict, and assets that could balance the deal. Works without a league.
 - **Trade suggestions**: connect a Sleeper league, pick your team, choose a strategy (contending, rebuilding, balanced), how even trades must be, and positions you need. The app searches every roster for 1-for-1, 2-for-1, and 1-for-2 trades that fit.
-- **League aware**: values are adjusted for Superflex vs 1 QB, PPR scoring, and league size. Draft pick ownership (including traded picks) comes from Sleeper.
+- **League aware**: values are adjusted for Superflex vs 1 QB, PPR scoring, league size, and tight end premium. Draft pick ownership (including traded picks) comes from Sleeper.
+- **Data science layer**: aging curves from NFL history, a next-season production model, a market-vs-fundamentals "buy low / sell high" signal, a roster-need and value-over-replacement model, and trade heuristics calibrated on real accepted trades. See [Data science](#data-science).
+- **Calculator extras**: player autocomplete, trade history saved in your browser, and signed share links (nothing is stored on the server).
 - **Optional AI explanations**: if you set `OPENAI_API_KEY`, a model writes short explanations of results. It never sets values, picks players, or scores fairness. Without a key, built-in text is used.
 
 ## How trade values work
@@ -21,31 +23,85 @@ Values come from [FantasyCalc](https://www.fantasycalc.com), whose numbers are d
 
 Fairness is computed in plain Python:
 
-1. For each side, sort assets by value and apply a small depth discount (each extra asset counts 92% of the previous one) because two mid-tier assets rarely equal one star. This constant is a tunable heuristic, not a market number. It lives in `dynasty/trades.py`.
-2. Fairness is `100 * smaller_total / larger_total`. 90 or higher reads as an even trade.
+1. For each side, sort assets by value and apply a depth discount (each extra asset counts `DEPTH_DECAY` times the previous one) because two mid-tier assets rarely equal one star. The constant is **calibrated on real trades** (see below), not guessed. It lives in `dynasty/trades.py` and is read from `dynasty/data/calibration.json`.
+2. Fairness is `100 * smaller_total / larger_total`. Trades at or above the calibrated "even" threshold (the median fairness of real trades) read as even.
 3. The side that **receives** the larger package wins.
 
-Suggestions are found by search, then filtered by your strategy:
+Suggestions are found by search, then ranked:
 
 - **Contending** requires more win-now (redraft) value coming back than going out.
-- **Rebuilding** requires a younger value-weighted age coming back, or draft capital.
+- **Rebuilding** requires more expected 3-year production coming back (from empirical aging curves) or draft capital.
 - **Balanced** scores both.
-- Stated position needs add to a trade's score. Each trade is limited to one reuse of any partner asset and two uses of any of yours, with at most two trades per partner.
+- Stated position needs add to a trade's score.
+- **Roster fit**: the need model checks whether the trade fills a hole in your lineup and whether the partner is thin at what you send.
+- **Projection model edge**: assets the model thinks are underpriced relative to similar profiles score higher.
+- Each trade is limited to one reuse of any partner asset and two uses of any of yours, with at most two trades per partner.
 
-### Why not train a model?
+## Data science
 
-A model needs labeled data, meaning a ground-truth answer for "what is this player worth". That data is the private trade history that FantasyCalc and KeepTradeCut already aggregate and sell/publish as values. Training your own on public data would mean guessing values from stats, which is a worse, harder-to-maintain version of a free API. This project uses the market values directly and keeps the logic transparent and testable.
+Everything below lives in `datascience/` and runs offline. The web app never imports pandas or scikit-learn; it loads small JSON artifacts from `dynasty/data/`.
 
-Limitations of the current approach:
+```mermaid
+flowchart LR
+  FC[FantasyCalc values and trades] --> Snap[Daily snapshots and trade log]
+  NV[nflverse season stats] --> Feat[Player-season features]
+  Snap --> Feat
+  Feat --> Prod[Production model]
+  Prod --> Edge[Market vs fundamentals]
+  Snap --> Edge
+  Snap --> Back[Backtest and calibration]
+  Prod --> Art[dynasty/data JSON]
+  Edge --> Art
+  Back --> Art
+  Art --> App[Flask app]
+```
 
-- No TE-premium or custom scoring adjustments beyond PPR and Superflex.
-- Values reflect the market, not your league's specific mood or needs.
-- Only players and picks FantasyCalc prices (roughly the top 400 plus picks 2027 to 2029) are considered; deep bench players are ignored.
-- Check FantasyCalc's terms before using this commercially, and keep the credit in the footer.
+### Reproduce
+
+```bash
+pip install -r requirements-ds.txt          # or requirements-ds.lock for exact versions
+python -m datascience.run_all               # collect data, fit models, write dynasty/data/*.json and figures
+python notebooks/build_notebooks.py         # re-execute the analysis notebooks
+python -m datascience.collect snapshots     # run daily (cron) so value history and the forward test accumulate
+python -m datascience.collect trades        # the trade feed only returns the latest ~50 per query; run regularly
+```
+
+Raw data goes to `data/` (gitignored). Artifacts are committed so the app works without running the pipeline.
+
+### What each piece does
+
+| Piece | Method | Where |
+|-------|--------|-------|
+| Aging curves | Pooled year-over-year retention of points per game by position and age, smoothed | `features.py`, `aging_curves.json` |
+| Production model | Gradient-boosted regression of next-season PPR points with 20/80 quantile bands, evaluated walk-forward against persistence and age-curve baselines | `model.py` |
+| Market vs fundamentals | Out-of-fold model of market value from projected points, age, experience, draft capital; the residual is the buy/sell edge | `model.py`, `model_edges.json` |
+| Depth discount | Grid search over real accepted trades minimizing squared log imbalance, with bootstrap intervals | `backtest.py`, `calibration.json` |
+| Position adjustments | Ridge regression on position value shares, applied only if the 90% bootstrap interval excludes zero | `backtest.py` |
+| TE premium | Receptions per point of starting TEs gives a relative TE value multiplier | `features.py` |
+| Bench values | The market-pricing model applied to unpriced players, capped below the cheapest market asset | `model.py` |
+| Roster needs and VORP | Greedy starting lineups, league-wide replacement level, need and surplus by position | `dynasty/needs.py` |
+| Forward test | Does the heuristic's winning side gain more market value later? Activates once snapshots span a week | `backtest.py` |
+
+Notebooks in `notebooks/` walk through the analysis with outputs saved; charts are in `notebooks/figures/`.
+
+### Results at the last run (October 2026)
+
+- **Production model**: mean absolute error about 42 points vs 47 for "next year equals this year" and 46 for the age-curve baseline, with rank correlation 0.71 vs 0.68 (7 walk-forward seasons). An honest, modest gain: next-season production is mostly noise. The 20/80 band covers about 77% of outcomes (a calibrated band would cover 60%), so the bands are conservative.
+- **Depth discount**: the best fit on 280 real trades is about 0.65 (90% bootstrap interval 0.58 to 0.71). The earlier hand-picked 0.92 fit worse than 0.65 and better than no discount, and the loss curve is flat between 0.6 and 0.7.
+- **Real trades are not perfectly even**: the median accepted trade scores about 82% on this fairness measure, so the "even" threshold is set there instead of at 90.
+- **Market vs fundamentals** explains about half the variance of log market value out of sample, so edges are noisy and flagged only beyond 1.25 standard deviations.
+
+### Limitations
+
+- Trades are valued with current market values (they are recent, so drift is small). Accepted trades are not proven fair, and the sample is only what the collector has gathered.
+- The edge signal compares against production-based expectations. Injured players, role changes, and rookies without NFL history are misjudged or not scored. Treat it as a prompt to look closer, not advice.
+- Production features come from the latest completed NFL season and PPR scoring; other formats reuse the same projections.
+- Position multipliers and the depth discount are fit to the trades available today and will move as more are collected. Re-run `python -m datascience.run_all` periodically.
+- Check FantasyCalc's, Sleeper's, and nflverse's terms before commercial use, and keep the credit in the footer.
 
 ## Quick start
 
-Requires Python 3.9 or newer.
+Requires Python 3.9 or newer (3.11 or newer for the data science pipeline).
 
 ```bash
 git clone <your-repo-url>
@@ -65,10 +121,19 @@ export OPENAI_API_KEY='sk-...'   # AI-written explanations
 export SECRET_KEY='...'          # required when APP_ENV=production
 ```
 
-Run the tests:
+Run the tests and linters:
 
 ```bash
-pytest
+pytest                      # data science tests skip themselves unless requirements-ds.txt is installed
+ruff check . && mypy dynasty
+```
+
+For reproducible installs use `pip install -r requirements.lock` (web app) or `requirements-ds.lock` (everything). Regenerate with `uv pip compile requirements.txt -o requirements.lock --python-version 3.9 --universal`.
+
+To sanity-check against your own league from the command line:
+
+```bash
+python scripts/verify_league.py <league_id> <sleeper_username>
 ```
 
 ## Configuration
@@ -106,11 +171,17 @@ dynasty/
   sleeper.py       Sleeper API client and league model
   values.py        FantasyCalc client, name and pick matching, disk cache
   trades.py        fairness math and trade search
+  needs.py         roster-need, replacement level, and VORP model
+  insights.py      loads data science artifacts (stdlib only, safe defaults)
+  data/            artifacts written by the pipeline (calibration, edges, aging curves, history)
   llm.py           optional OpenAI explanations (never sets values)
   cache.py         TTL cache and rate limiter
   routes.py        pages
   templates/       Jinja templates
-  static/          CSS
+  static/          CSS and calculator.js (autocomplete, history)
+datascience/       offline pipeline: collect, features, model, backtest, figures
+notebooks/         executed analysis notebooks and figures
+scripts/           verify_league.py
 tests/             pytest suite (no network needed)
 wsgi.py            production entry point (gunicorn wsgi:app)
 run.py             local development entry point
@@ -127,6 +198,10 @@ Deploy as a single web service. No database or other service is needed. See [DEP
 - **A player is not found in the calculator**: names must match FantasyCalc spellings (punctuation, accents, and Jr/Sr suffixes are ignored). Picks use `2027 1st`; only 2027 to 2029 are priced.
 - **Everything resets after a restart in development**: without `SECRET_KEY` a new key is generated each run, which signs you out. Set one to stay signed in.
 
-## Remaining work
+## Operations notes
 
-See [PROJECT_GAPS.md](PROJECT_GAPS.md).
+- **Logging**: every request logs `rid=<request id> METHOD path -> status ms`, and the same ID is returned in the `X-Request-ID` response header (a client-supplied one is honored if it is alphanumeric). Point your host's log drain at stdout.
+- **Rate limits** are per process. If you run several instances and need strict limits, enforce them at the proxy or CDN rather than adding a database.
+- **Second value source**: FantasyCalc is the only source. If it changes its API, cached values keep working and the app degrades with a clear message. A fallback such as KeepTradeCut was deliberately not added because its terms have not been reviewed.
+- **Privacy**: see the in-app `/privacy` page. League IDs go to Sleeper; if `OPENAI_API_KEY` is set, trade details go to OpenAI.
+- Licensed under the MIT License (see `LICENSE`). Review the API terms of FantasyCalc, Sleeper, and nflverse before any commercial use.

@@ -21,6 +21,7 @@
           <a class="btn btn-secondary btn-small" href="{{ url_for('main.dashboard') }}">Dashboard</a>
         {% endif %}
         <a class="btn btn-secondary btn-small" href="{{ url_for('main.calculator') }}">Calculator</a>
+        <a class="btn btn-secondary btn-small" href="{{ url_for('main.insights_page') }}">Insights</a>
         {% if current_league_name %}
           <form method="post" action="{{ url_for('main.reset') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -42,7 +43,10 @@
       Trade values from <a href="https://www.fantasycalc.com">FantasyCalc</a>.
       League data from the <a href="https://docs.sleeper.com">Sleeper API</a>.
       Not affiliated with either.
+      <br>
+      <a href="{{ url_for('main.privacy') }}">Privacy and data sources</a>
     </footer>
   </div>
+  {% block scripts %}{% endblock %}
 </body>
 </html>

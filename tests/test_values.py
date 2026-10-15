@@ -4,8 +4,8 @@ import pytest
 import requests
 
 from dynasty.values import (
-    ValueSettings,
     ValuesClient,
+    ValueSettings,
     ValuesUnavailable,
     normalize_name,
     parse_pick,
@@ -90,7 +90,7 @@ class FakeHttp:
 
 def test_client_caches_in_memory_and_skips_bad_rows():
     http = FakeHttp(_payload())
-    client = ValuesClient(http=http, cache_dir=None)
+    client = ValuesClient(http=http, cache_dir=None, adjust=False)
     book = client.get_book()
     client.get_book()
     assert http.calls == 1

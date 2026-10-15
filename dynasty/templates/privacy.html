@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Privacy and data sources{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Privacy and data sources</h2>
+  <p class="muted">This app has no accounts and no database.</p>
+  <ul class="reasons">
+    <li>Your Sleeper league ID and username are sent to the public Sleeper API to load rosters. They are kept only in a signed cookie in your browser.</li>
+    <li>Trade values come from the public FantasyCalc API. Player projections and aging curves are derived offline from public nflverse statistics.</li>
+    <li>Trade history is saved only in your browser's local storage. Share links contain the trade itself in a signed token; nothing is stored on the server.</li>
+    {% if ai_enabled %}
+    <li>AI explanations are enabled on this server: the players, picks, and values in a trade are sent to OpenAI to write a short explanation. Values and fairness are never set by the model.</li>
+    {% else %}
+    <li>AI explanations are disabled on this server; no trade details are sent to any language model.</li>
+    {% endif %}
+    <li>The server logs request metadata (path, status, request ID) but not league contents.</li>
+  </ul>
+  <p class="muted small mt">
+    FantasyCalc, Sleeper, and nflverse each have their own terms; review them before any commercial use.
+    This project is not affiliated with any of them.
+  </p>
+</div>
+{% endblock %}

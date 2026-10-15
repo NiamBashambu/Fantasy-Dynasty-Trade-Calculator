@@ -40,13 +40,30 @@
           <option value="0.0" {% if form.ppr == 0 %}selected{% endif %}>Standard</option>
         </select>
       </div>
+      <div class="form-group">
+        <label for="te">Tight end premium</label>
+        <select id="te" name="te">
+          <option value="0.0" {% if form.te == 0 %}selected{% endif %}>None</option>
+          <option value="0.5" {% if form.te == 0.5 %}selected{% endif %}>+0.5 per reception</option>
+          <option value="1.0" {% if form.te == 1 %}selected{% endif %}>+1.0 per reception</option>
+        </select>
+      </div>
     </div>
     <button class="btn" type="submit">Calculate</button>
   </form>
 </div>
 
+<div class="card" id="trade-history" hidden>
+  <h3>Recent trades <button type="button" class="btn btn-secondary btn-small" data-history-clear>Clear</button></h3>
+  <p class="muted small">Saved only in this browser.</p>
+  <ul class="history-list" data-history-list></ul>
+</div>
+
 {% if result %}
-<div class="card">
+<div class="card" id="trade-result"
+     data-team-a="{{ form.team_a }}" data-team-b="{{ form.team_b }}" data-qbs="{{ form.qbs }}"
+     data-ppr="{{ form.ppr }}" data-te="{{ form.te }}" data-fairness="{{ result.fairness }}"
+     data-winner="{{ result.winner }}">
   <h2>
     {% if result.verdict == 'even' %}Fair trade{% else %}Favors {{ result.winner }}{% endif %}
     <span class="badge {{ 'good' if result.verdict == 'even' else 'warn' }}">{{ result.fairness }}% even</span>
@@ -54,11 +71,11 @@
   <div class="trade-sides">
     <div class="side">
       <h4>Team A gives ({{ result.total_a|num }})</h4>
-      <ul>{% for a in result.give_a %}<li><span>{{ a.name }}</span><span>{{ a.value|num }}</span></li>{% endfor %}</ul>
+      <ul>{% for a in result.give_a %}<li><span>{{ a.name }}{% if a.estimated %} <span class="muted small">(estimated)</span>{% endif %}{% set e = edge_for(a.key, settings.num_qbs) %}{% if e %} <span class="badge {{ 'good' if e.signal == 'buy' else ('bad' if e.signal == 'sell' else 'neutral') }}">{{ e.label }}</span>{% endif %}</span><span>{{ a.value|num }}</span></li>{% endfor %}</ul>
     </div>
     <div class="side">
       <h4>Team B gives ({{ result.total_b|num }})</h4>
-      <ul>{% for a in result.give_b %}<li><span>{{ a.name }}</span><span>{{ a.value|num }}</span></li>{% endfor %}</ul>
+      <ul>{% for a in result.give_b %}<li><span>{{ a.name }}{% if a.estimated %} <span class="muted small">(estimated)</span>{% endif %}{% set e = edge_for(a.key, settings.num_qbs) %}{% if e %} <span class="badge {{ 'good' if e.signal == 'buy' else ('bad' if e.signal == 'sell' else 'neutral') }}">{{ e.label }}</span>{% endif %}</span><span>{{ a.value|num }}</span></li>{% endfor %}</ul>
     </div>
   </div>
   <p class="explanation">{{ analysis }}</p>
@@ -68,11 +85,27 @@
       {{ result.gap|num }}: {% for b in result.balancers %}{{ b.name }} ({{ b.value|num }}){% if not loop.last %}, {% endif %}{% endfor %}.
     </p>
   {% endif %}
+  {% if model_view %}
+    <p class="muted mt">
+      Projection model view: relative to similar production and age profiles, Team A's incoming
+      players carry about {{ model_view.team_a|num }} of model edge and Team B's about
+      {{ model_view.team_b|num }}. Positive means the market is pricing them below comparable profiles.
+      This is a relative-value signal, not a guarantee.
+    </p>
+  {% endif %}
   <p class="muted small mt">
-    Totals apply a small depth discount: each additional asset on a side counts slightly less than
-    the one before it, since two mid-tier assets rarely equal one star. The winner is the side that
-    receives more value.
+    Totals apply a depth discount of {{ '%.2f'|format(depth_decay) }} per additional asset on a side
+    (fit to real accepted trades; two mid-tier assets rarely equal one star). Trades within
+    {{ even_threshold }}% read as even. The winner is the side that receives more value.
   </p>
+  {% if share_url %}
+  <div class="share-row mt">
+    <input id="share-url" readonly value="{{ share_url }}" aria-label="Shareable link">
+    <button type="button" id="copy-share" class="btn btn-secondary btn-small">Copy link</button>
+  </div>
+  <p class="muted small">The link contains the trade itself, signed so it cannot be altered. Nothing is stored on our servers.</p>
+  {% endif %}
 </div>
 {% endif %}
 {% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='calculator.js') }}" defer></script>{% endblock %}

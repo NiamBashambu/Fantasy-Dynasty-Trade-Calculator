@@ -13,6 +13,21 @@
   <p class="mt"><a class="btn btn-secondary btn-small" href="{{ url_for('main.dashboard') }}">Back to dashboard</a></p>
 </div>
 
+{% if partners %}
+<div class="card">
+  <h3>Best trade partners by roster fit</h3>
+  <p class="muted small">Teams whose bench surplus matches your needs and whose needs match your surplus.</p>
+  <ul class="reasons">
+    {% for team, score in partners %}
+      <li>{{ team.name }}
+        {% set thin = [] %}{% for pos in positions %}{% if team.need.get(pos, 0) >= 0.3 %}{% set _ = thin.append(pos) %}{% endif %}{% endfor %}
+        {% if thin %}<span class="muted">(thin at {{ thin|join(', ') }})</span>{% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
 {% for s in suggestions %}
 <div class="card">
   <h3>Trade with {{ s.partner_name }}

@@ -1,0 +1,23 @@
+[tool.ruff]
+line-length = 130
+target-version = "py39"
+extend-exclude = ["notebooks", ".venv", "data"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP006", "UP007"]
+ignore = ["E501", "B008", "UP006", "UP007"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["dynasty", "datascience"]
+
+[tool.mypy]
+ignore_missing_imports = true
+check_untyped_defs = false
+exclude = ["notebooks/", "tests/", "\\.venv/", "data/"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E702", "E701", "E402"]
+"scripts/*" = ["E402"]

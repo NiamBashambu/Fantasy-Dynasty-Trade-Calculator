@@ -58,6 +58,15 @@ class League:
             rec = 0.0
         return min((0.0, 0.5, 1.0), key=lambda option: abs(option - rec))
 
+    @property
+    def te_premium(self) -> float:
+        """Extra points per reception for tight ends (Sleeper's ``bonus_rec_te``)."""
+        try:
+            bonus = float(self.scoring_settings.get("bonus_rec_te", 0) or 0)
+        except (TypeError, ValueError):
+            bonus = 0.0
+        return min((0.0, 0.5, 1.0), key=lambda option: abs(option - max(0.0, bonus)))
+
     def team(self, roster_id: int) -> Optional[Team]:
         for team in self.teams:
             if team.roster_id == roster_id:

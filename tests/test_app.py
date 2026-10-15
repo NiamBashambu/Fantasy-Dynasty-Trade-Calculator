@@ -1,4 +1,5 @@
 import pytest
+
 from dynasty import Services, create_app
 from dynasty.cache import SlidingWindowLimiter, TTLCache
 from dynasty.config import load_config
@@ -193,3 +194,50 @@ def test_league_properties():
     assert league.num_qbs == 2
     league.scoring_settings = {}
     assert league.ppr == 0.0
+
+
+# -- data science features ------------------------------------------------------
+
+def test_insights_page_renders_without_league(client):
+    response = client.get("/insights")
+    assert response.status_code == 200
+    assert b"Aging curves" in response.data
+    assert client.get("/insights?qbs=junk").status_code == 200
+
+
+def test_privacy_page_states_ai_status(client):
+    assert b"AI explanations are disabled" in client.get("/privacy").data
+
+
+def test_request_id_header_is_set_and_sanitized(client):
+    assert len(client.get("/health").headers["X-Request-ID"]) >= 8
+    assert client.get("/health", headers={"X-Request-ID": "abc-123"}).headers["X-Request-ID"] == "abc-123"
+    assert client.get("/health", headers={"X-Request-ID": "bad id!"}).headers["X-Request-ID"] != "bad id!"
+
+
+def test_asset_search(client):
+    results = client.get("/api/assets?q=chas&qbs=1").get_json()["results"]
+    assert "Ja'Marr Chase" in results
+    assert client.get("/api/assets?q=x").get_json()["results"] == []
+    picks = client.get("/api/assets?q=2027").get_json()["results"]
+    assert "2027 1st" in picks
+
+
+def test_share_link_round_trip_and_tamper_rejected(client):
+    page = client.post("/calculator", data={"team_a": "Ja'Marr Chase", "team_b": "Bijan Robinson", "qbs": "1", "ppr": "1.0", "te": "0.5"})
+    html = page.get_data(as_text=True)
+    assert 'id="trade-result"' in html and 'data-te="0.5"' in html
+    start = html.index("/t/")
+    token = html[start + 3 : html.index('"', start)]
+    shared = client.get(f"/t/{token}")
+    assert shared.status_code == 200 and "Ja&#39;Marr Chase" in shared.get_data(as_text=True)
+    assert client.get(f"/t/{token[:-3]}abc").status_code == 404
+    assert client.get("/t/not-a-token").status_code == 404
+
+
+def test_dashboard_shows_needs_and_vorp(client):
+    client.post("/connect", data={"league_id": "123456789", "username": "alpha_owner"})
+    page = client.get("/dashboard").get_data(as_text=True)
+    assert "Roster needs by position" in page and "over replacement" in page
+    suggestions = client.post("/suggestions", data={"strategy": "balanced", "risk_tolerance": "high"}).get_data(as_text=True)
+    assert "Trade with Bravo" in suggestions

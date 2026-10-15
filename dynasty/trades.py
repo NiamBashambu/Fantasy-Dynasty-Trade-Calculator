@@ -8,24 +8,26 @@ from dataclasses import dataclass, field, replace
 from itertools import combinations
 from typing import Dict, Iterable, List, Optional, Sequence, Set
 
+from . import insights
+from .needs import LeagueNeeds
 from .sleeper import League
 from .values import Asset, ValueBook
 
-# Heuristic: the Nth best asset on a side counts at DEPTH_DECAY**N of its value.
-# Raw values are additive, but two mid assets are not worth one star because
-# only so many players start and roster spots are limited. This is a tunable
-# approximation, not a market-derived constant.
-DEPTH_DECAY = 0.92
+# The Nth best asset on a side counts at DEPTH_DECAY**N of its value. Raw values
+# are additive, but two mid assets are not worth one star because only so many
+# players start and roster spots are limited. The constant is calibrated on real
+# accepted trades by `python -m datascience.backtest` (see calibration.json);
+# without that artifact it falls back to the earlier hand-picked 0.92.
+DEPTH_DECAY = insights.depth_decay()
 
 # Assets below this value are roster filler and are ignored when searching.
 MIN_TRADE_ASSET_VALUE = 800
 SEARCH_POOL_SIZE = 12
-EVEN_THRESHOLD = 90  # fairness at or above this reads as "even"
+EVEN_THRESHOLD = insights.even_threshold()  # median fairness of real trades (default 90)
 
 RISK_TOLERANCE = {"low": 0.06, "medium": 0.10, "high": 0.15}
 POSITIONS = ("QB", "RB", "WR", "TE")
 STRATEGIES = ("contend", "rebuild", "balanced")
-PICK_AGE = 21.0
 
 
 def adjusted_total(assets: Iterable[Asset]) -> float:
@@ -88,7 +90,7 @@ def suggest_balancers(evaluation: Evaluation, book: ValueBook, limit: int = 3) -
     in_trade = {a.key for a in evaluation.give_a} | {a.key for a in evaluation.give_b}
     candidates = [
         a for a in book.assets
-        if a.key not in in_trade and a.value > 0
+        if a.key not in in_trade and a.value > 0 and not a.estimated
         and not (a.is_pick and ("(" in a.name))  # prefer generic picks over tiers
     ]
     candidates.sort(key=lambda a: abs(a.value - needed))
@@ -161,13 +163,29 @@ class Suggestion:
     score: float
     reasons: List[str]
     explanation: Optional[str] = None
+    model_edge: float = 0.0  # fraction of value the model thinks you gain (positive = good for you)
+    my_fit: float = 0.0
+    partner_fit: float = 0.0
 
 
-def _weighted_age(assets: Sequence[Asset]) -> float:
+def _weighted_longevity(assets: Sequence[Asset]) -> float:
+    """Value-weighted expected production over the next three seasons (empirical aging curves)."""
     total = sum(a.value for a in assets)
     if total <= 0:
-        return PICK_AGE
-    return sum((a.age if a.age is not None else PICK_AGE) * a.value for a in assets) / total
+        return insights.longevity(None, None)
+    return sum(insights.longevity(None if a.is_pick else a.position, a.age) * a.value for a in assets) / total
+
+
+def _model_edge(give: Sequence[Asset], receive: Sequence[Asset], num_qbs: int) -> float:
+    """Net model-implied value change for you, as a fraction of what you send.
+
+    Each asset contributes market value times its (capped) edge fraction from the
+    projection model: positive edge means the market prices it below similar
+    profiles. Assets without a model estimate (picks, rookies) contribute zero.
+    """
+    gain = sum(a.value * insights.edge_fraction(a.key, num_qbs) for a in receive if not a.is_pick)
+    loss = sum(a.value * insights.edge_fraction(a.key, num_qbs) for a in give if not a.is_pick)
+    return (gain - loss) / max(1.0, sum(a.value for a in give))
 
 
 def _packages(pool: Sequence[Asset], sizes=(1, 2)) -> List[tuple]:
@@ -182,6 +200,10 @@ def _score(
     receive: Sequence[Asset],
     fairness: int,
     prefs: Preferences,
+    model_edge: float = 0.0,
+    my_fit: float = 0.0,
+    partner_fit: float = 0.0,
+    partner_name: str = "The other team",
 ):
     """Return (score, reasons) or None if the trade does not fit the strategy."""
     reasons: List[str] = []
@@ -190,8 +212,8 @@ def _score(
     score = fairness / 100 * 0.5
 
     now_delta = (sum(a.redraft_value for a in receive) - sum(a.redraft_value for a in give)) / give_total
-    age_give, age_recv = _weighted_age(give), _weighted_age(receive)
-    age_delta = age_give - age_recv  # positive means you get younger
+    long_give, long_recv = _weighted_longevity(give), _weighted_longevity(receive)
+    age_delta = long_recv - long_give  # positive means you get assets that last longer
     picks_in = sum(a.value for a in receive if a.is_pick) / recv_total
 
     if prefs.strategy == "contend":
@@ -202,13 +224,16 @@ def _score(
     elif prefs.strategy == "rebuild":
         if age_delta <= 0 and picks_in <= 0:
             return None
-        score += max(0.0, min(age_delta / 5, 1.0)) + 0.3 * picks_in
+        score += max(0.0, min(age_delta, 1.0)) + 0.3 * picks_in
         if age_delta > 0:
-            reasons.append(f"Gets younger: value-weighted age {age_recv:.1f} coming back vs {age_give:.1f} going out.")
+            reasons.append(
+                f"Gets longer-lasting: expected 3-year production {long_recv:.2f}x vs {long_give:.2f}x going out "
+                "(from empirical aging curves)."
+            )
         if picks_in > 0:
             reasons.append("Brings back draft capital, which suits a rebuild.")
     else:
-        score += 0.25 * max(-1.0, min(now_delta, 1.0)) + 0.25 * max(-1.0, min(age_delta / 5, 1.0))
+        score += 0.25 * max(-1.0, min(now_delta, 1.0)) + 0.25 * max(-1.0, min(age_delta, 1.0))
 
     if prefs.needs:
         gained = {a.position for a in receive if not a.is_pick} & prefs.needs
@@ -218,6 +243,22 @@ def _score(
             reasons.append("Fills a stated need: " + ", ".join(sorted(gained)) + ".")
         if lost - gained:
             score -= 0.25 * len(lost - gained)
+    if model_edge:
+        score += 0.4 * max(-1.0, min(model_edge * 2, 1.0))
+        if model_edge >= 0.05:
+            reasons.append(
+                f"Projection model: the assets you get are priced about {model_edge:.0%} below similar production/age profiles."
+            )
+        elif model_edge <= -0.05:
+            reasons.append(
+                f"Projection model: the assets you send look underpriced by about {-model_edge:.0%}; consider holding."
+            )
+    if my_fit or partner_fit:
+        score += 0.4 * max(-1.0, min(my_fit, 1.0)) + 0.4 * max(-1.0, min(partner_fit, 1.0))
+        if my_fit >= 0.3:
+            reasons.append("Roster fit: fills a weak spot in your starting lineup.")
+        if partner_fit >= 0.3:
+            reasons.append(f"Partner fit: {partner_name} is thin where you are sending, so they have a reason to accept.")
     return score, reasons
 
 
@@ -226,6 +267,8 @@ def generate_suggestions(
     others: Sequence[TeamAssets],
     prefs: Preferences,
     limit: int = 5,
+    num_qbs: int = 1,
+    needs: Optional[LeagueNeeds] = None,
 ) -> List[Suggestion]:
     prefs = prefs.cleaned()
     tolerance = RISK_TOLERANCE[prefs.risk]
@@ -252,7 +295,11 @@ def generate_suggestions(
                 fairness = round(100 * min(give_total, recv_total) / high)
                 if fairness < min_fairness:
                     continue
-                scored = _score(give, receive, fairness, prefs)
+                model_edge = _model_edge(give, receive, num_qbs)
+                my_fit, partner_fit = (
+                    needs.trade_fit(mine.roster_id, partner.roster_id, give, receive) if needs else (0.0, 0.0)
+                )
+                scored = _score(give, receive, fairness, prefs, model_edge, my_fit, partner_fit, partner.name)
                 if scored is None:
                     continue
                 score, reasons = scored
@@ -272,6 +319,9 @@ def generate_suggestions(
                         fairness=fairness,
                         score=score,
                         reasons=reasons,
+                        model_edge=model_edge,
+                        my_fit=my_fit,
+                        partner_fit=partner_fit,
                     )
                 )
 

@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Insights{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Insights</h2>
+  <p class="muted">
+    How the numbers behind this app were built, and where the market and a production-based model disagree.
+  </p>
+  <p class="mt">
+    <a class="btn btn-secondary btn-small" href="{{ url_for('main.insights_page', qbs=1) }}">1 QB</a>
+    <a class="btn btn-secondary btn-small" href="{{ url_for('main.insights_page', qbs=2) }}">Superflex</a>
+    <span class="muted small">Showing {{ 'Superflex' if num_qbs == 2 else '1 QB' }} values.</span>
+  </p>
+</div>
+
+{% if has_model %}
+<div class="grid">
+  <div class="card">
+    <h3>Buy low</h3>
+    <p class="muted small">Market price is below similar production, age, and draft profiles.</p>
+    <table>
+      <thead><tr><th>Player</th><th class="num">Market</th><th class="num">Model</th><th class="num">z</th><th>Trend</th></tr></thead>
+      <tbody>
+      {% for p in movers.buy %}
+        <tr><td>{{ p.name }} <span class="muted">{{ p.position }}</span></td><td class="num">{{ p.market_value|num }}</td><td class="num">{{ p.fundamental_value|num }}</td><td class="num">{{ '%.1f'|format(p.z) }}</td>
+          <td>{% if spark.get(p.name) %}<svg class="spark" width="120" height="28" viewBox="0 0 120 28"><polyline points="{{ spark[p.name] }}"/></svg>{% else %}<span class="muted small">n/a</span>{% endif %}</td></tr>
+      {% else %}<tr><td colspan="5" class="muted">No strong signals right now.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h3>Sell high</h3>
+    <p class="muted small">Market price is above similar profiles.</p>
+    <table>
+      <thead><tr><th>Player</th><th class="num">Market</th><th class="num">Model</th><th class="num">z</th><th>Trend</th></tr></thead>
+      <tbody>
+      {% for p in movers.sell %}
+        <tr><td>{{ p.name }} <span class="muted">{{ p.position }}</span></td><td class="num">{{ p.market_value|num }}</td><td class="num">{{ p.fundamental_value|num }}</td><td class="num">{{ '%.1f'|format(p.z) }}</td>
+          <td>{% if spark.get(p.name) %}<svg class="spark" width="120" height="28" viewBox="0 0 120 28"><polyline points="{{ spark[p.name] }}"/></svg>{% else %}<span class="muted small">n/a</span>{% endif %}</td></tr>
+      {% else %}<tr><td colspan="5" class="muted">No strong signals right now.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<p class="muted small">
+  Trend sparklines appear once the collector has stored at least two daily snapshots
+  (<code>python -m datascience.collect snapshots</code>). Injured players and players whose role changed can
+  look like sells even when the market is right; rookies without NFL history are not scored.
+</p>
+{% else %}
+<div class="card"><p class="muted">Model artifacts are not available. Run <code>python -m datascience.run_all</code>.</p></div>
+{% endif %}
+
+<div class="card">
+  <h3>Aging curves</h3>
+  <p class="muted small">
+    Expected next-season points per game as a share of this season, by age, from NFL history
+    (players with 8+ games in both seasons).
+  </p>
+  {% if aging %}
+  <table>
+    <thead><tr><th>Age</th>{% for pos in positions %}<th class="num">{{ pos }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {% for age in ages %}
+      <tr><td>{{ age }}</td>{% for pos in positions %}<td class="num">{{ '%.0f'|format((aging[pos][age] if pos in aging and age in aging[pos] else 0) * 100) }}%</td>{% endfor %}</tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3>Model scorecard</h3>
+  {% if meta.metrics %}
+    <p class="muted small">
+      Next-season production model, walk-forward over {{ meta.metrics.model.folds }} test seasons
+      (features from {{ meta.data_season }}; snapshot {{ meta.snapshot_date }}).
+    </p>
+    <table>
+      <thead><tr><th>Method</th><th class="num">MAE (points)</th><th class="num">Rank correlation</th></tr></thead>
+      <tbody>
+        {% for name, m in meta.metrics.items() %}
+        <tr><td>{{ name|replace('_', ' ')|title }}</td><td class="num">{{ m.mae }}</td><td class="num">{{ m.spearman }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="muted small mt">
+      The model beats naive baselines modestly; next-season football production is mostly noise.
+      {% if diagnostics %}The market-pricing model explains about {{ '%.0f'|format(diagnostics.oof_r2_log_value * 100) }}% of variation in log market value out of sample.{% endif %}
+    </p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3>Trade calibration</h3>
+  {% if calibration and calibration.status == 'ok' %}
+    <p class="muted small">Fit to {{ calibration.n_trades_used }} real accepted dynasty trades.</p>
+    <ul class="reasons">
+      <li>Depth discount: {{ '%.3f'|format(calibration.depth_decay) }} per extra asset (90% bootstrap interval {{ calibration.depth_decay_fit.ci90[0] }} to {{ calibration.depth_decay_fit.ci90[1] }}); the earlier hand-picked 0.92 fit worse.</li>
+      <li>"Even" threshold: {{ calibration.even_threshold }}% (the median fairness of real trades).</li>
+      {% if calibration.position_multipliers %}<li>Position adjustments (only where statistically distinguishable from zero): {% for pos, m in calibration.position_multipliers.items() %}{{ pos }} x{{ m }}{% if not loop.last %}, {% endif %}{% endfor %}.</li>{% endif %}
+      {% if calibration.te_premium_lift %}<li>TE premium: a +0.5 bonus raises TE value by about {{ '%.0f'|format(calibration.te_premium_lift * 50) }}%.</li>{% endif %}
+    </ul>
+  {% else %}
+    <p class="muted">Calibration data is not available; default constants are in use.</p>
+  {% endif %}
+</div>
+{% endblock %}
