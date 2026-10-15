@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Select your team{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>{{ league.name }}</h2>
+  <p class="muted">{{ league.total_rosters }} teams, season {{ league.season }}. Choose your team.</p>
+  <form method="post" action="{{ url_for('main.team') }}" class="mt">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-group">
+      <label for="roster_id">Your team</label>
+      <select id="roster_id" name="roster_id" required>
+        <option value="" disabled {% if not selected %}selected{% endif %}>Select a team</option>
+        {% for t in league.teams %}
+          <option value="{{ t.roster_id }}" {% if selected and selected.roster_id == t.roster_id %}selected{% endif %}>{{ t.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn" type="submit">Continue</button>
+  </form>
+</div>
+{% endblock %}

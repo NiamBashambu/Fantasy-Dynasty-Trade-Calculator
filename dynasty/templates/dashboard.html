@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}{{ team.name }} - Dashboard{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>{{ team.name }}</h2>
+  <p class="muted">
+    {{ league.name }} &middot; {{ league.total_rosters }} teams &middot;
+    {{ 'Superflex' if settings.num_qbs == 2 else '1 QB' }} &middot;
+    {{ 'PPR' if settings.ppr == 1 else ('Half PPR' if settings.ppr == 0.5 else 'Standard') }}
+  </p>
+  {% if standing %}
+    <p class="mt"><span class="badge good">Roster value rank {{ standing[0] }} of {{ standing[1] }}</span></p>
+  {% endif %}
+  <p class="mt"><a class="btn btn-secondary btn-small" href="{{ url_for('main.team') }}">Change team</a></p>
+</div>
+
+<div class="card">
+  <h3>Find trades</h3>
+  <p class="muted">We search every roster for value-balanced trades that fit your goals.</p>
+  <form method="post" action="{{ url_for('main.suggestions') }}" class="mt">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="grid">
+      <div class="form-group">
+        <label for="strategy">Team strategy</label>
+        <select id="strategy" name="strategy">
+          <option value="contend">Contending now</option>
+          <option value="rebuild">Rebuilding</option>
+          <option value="balanced" selected>Balanced</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="risk_tolerance">How even must trades be?</label>
+        <select id="risk_tolerance" name="risk_tolerance">
+          <option value="low">Very even (within 6%)</option>
+          <option value="medium" selected>Fairly even (within 10%)</option>
+          <option value="high">Flexible (within 15%)</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Positions you need</label>
+      <div class="checkbox-row">
+        {% for pos in positions %}
+          <label><input type="checkbox" name="position_needs" value="{{ pos }}"> {{ pos }}</label>
+        {% endfor %}
+      </div>
+    </div>
+    <button class="btn" type="submit" {% if not roster %}disabled{% endif %}>Generate suggestions</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Your roster by trade value</h3>
+  {% if roster %}
+  <table>
+    <thead>
+      <tr><th>Asset</th><th>Pos</th><th>Team</th><th class="num">Age</th><th class="num">Rank</th><th class="num">Value</th></tr>
+    </thead>
+    <tbody>
+      {% for a in roster %}
+      <tr>
+        <td>{{ a.name }}</td>
+        <td>{{ 'Pick' if a.is_pick else a.position }}</td>
+        <td>{{ a.team or '' }}</td>
+        <td class="num">{{ '%.1f'|format(a.age) if a.age else '' }}</td>
+        <td class="num">{{ a.rank }}</td>
+        <td class="num">{{ a.value|num }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted small mt">Only players and picks with a market value are listed. Draft picks include trades recorded in Sleeper.</p>
+  {% else %}
+    <p class="muted">Trade values are not available right now. Try again in a few minutes.</p>
+  {% endif %}
+</div>
+{% endblock %}

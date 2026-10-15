@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Dynasty Trade Analyzer{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="container">
+    <header class="app-header">
+      <a class="brand" href="{{ url_for('main.index') }}">
+        <h1>Dynasty Trade Analyzer</h1>
+        <span class="context">
+          {% if current_league_name %}{{ current_league_name }}{% if current_team_name %} / {{ current_team_name }}{% endif %}
+          {% else %}Market-based dynasty trade values{% endif %}
+        </span>
+      </a>
+      <nav class="nav">
+        {% if current_league_name %}
+          <a class="btn btn-secondary btn-small" href="{{ url_for('main.dashboard') }}">Dashboard</a>
+        {% endif %}
+        <a class="btn btn-secondary btn-small" href="{{ url_for('main.calculator') }}">Calculator</a>
+        {% if current_league_name %}
+          <form method="post" action="{{ url_for('main.reset') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-secondary btn-small" type="submit">Disconnect</button>
+          </form>
+        {% endif %}
+      </nav>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category if category in ['success', 'error', 'info'] else 'info' }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+
+    <footer>
+      Trade values from <a href="https://www.fantasycalc.com">FantasyCalc</a>.
+      League data from the <a href="https://docs.sleeper.com">Sleeper API</a>.
+      Not affiliated with either.
+    </footer>
+  </div>
+</body>
+</html>

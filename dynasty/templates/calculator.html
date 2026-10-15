@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Trade calculator{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Trade calculator</h2>
+  <p class="muted">
+    Enter players and draft picks (like <code>2027 1st</code>), one per line. Names are matched against
+    FantasyCalc's market values.
+  </p>
+
+  {% if errors %}
+    <div class="alert alert-error mt"><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('main.calculator') }}" class="mt">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="grid">
+      <div class="form-group">
+        <label for="team_a">Team A gives</label>
+        <textarea id="team_a" name="team_a" rows="6" placeholder="Ja'Marr Chase&#10;2027 2nd">{{ form.team_a }}</textarea>
+      </div>
+      <div class="form-group">
+        <label for="team_b">Team B gives</label>
+        <textarea id="team_b" name="team_b" rows="6" placeholder="Bijan Robinson">{{ form.team_b }}</textarea>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="form-group">
+        <label for="qbs">Quarterback format</label>
+        <select id="qbs" name="qbs">
+          <option value="1" {% if form.qbs == 1 %}selected{% endif %}>1 QB</option>
+          <option value="2" {% if form.qbs == 2 %}selected{% endif %}>Superflex</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="ppr">Scoring</label>
+        <select id="ppr" name="ppr">
+          <option value="1.0" {% if form.ppr == 1 %}selected{% endif %}>PPR</option>
+          <option value="0.5" {% if form.ppr == 0.5 %}selected{% endif %}>Half PPR</option>
+          <option value="0.0" {% if form.ppr == 0 %}selected{% endif %}>Standard</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn" type="submit">Calculate</button>
+  </form>
+</div>
+
+{% if result %}
+<div class="card">
+  <h2>
+    {% if result.verdict == 'even' %}Fair trade{% else %}Favors {{ result.winner }}{% endif %}
+    <span class="badge {{ 'good' if result.verdict == 'even' else 'warn' }}">{{ result.fairness }}% even</span>
+  </h2>
+  <div class="trade-sides">
+    <div class="side">
+      <h4>Team A gives ({{ result.total_a|num }})</h4>
+      <ul>{% for a in result.give_a %}<li><span>{{ a.name }}</span><span>{{ a.value|num }}</span></li>{% endfor %}</ul>
+    </div>
+    <div class="side">
+      <h4>Team B gives ({{ result.total_b|num }})</h4>
+      <ul>{% for a in result.give_b %}<li><span>{{ a.name }}</span><span>{{ a.value|num }}</span></li>{% endfor %}</ul>
+    </div>
+  </div>
+  <p class="explanation">{{ analysis }}</p>
+  {% if result.balancers %}
+    <p class="mt muted">
+      To even it out, the side giving less could add something worth roughly
+      {{ result.gap|num }}: {% for b in result.balancers %}{{ b.name }} ({{ b.value|num }}){% if not loop.last %}, {% endif %}{% endfor %}.
+    </p>
+  {% endif %}
+  <p class="muted small mt">
+    Totals apply a small depth discount: each additional asset on a side counts slightly less than
+    the one before it, since two mid-tier assets rarely equal one star. The winner is the side that
+    receives more value.
+  </p>
+</div>
+{% endif %}
+{% endblock %}
