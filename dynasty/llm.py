@@ -7,7 +7,7 @@ deterministic explanation and nothing breaks.
 
 import json
 import logging
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, Optional, Sequence
 
 from .trades import Evaluation, Suggestion, describe_assets
 

@@ -66,8 +66,8 @@ class League:
 
     def pick_ownership(
         self, seasons: List[int], rounds: List[int]
-    ) -> Dict[int, List[Tuple[int, int]]]:
-        """Return {roster_id: [(season, round), ...]} for picks each team currently owns.
+    ) -> Dict[int, List[Tuple[int, int, int]]]:
+        """Return {roster_id: [(season, round, original_roster_id), ...]} for picks each team owns.
 
         Every team starts with its own picks; Sleeper's traded_picks list moves them.
         """
@@ -84,10 +84,10 @@ class League:
                 continue
             if key in owners:
                 owners[key] = new_owner
-        result: Dict[int, List[Tuple[int, int]]] = {team.roster_id: [] for team in self.teams}
-        for (season, rnd, _original), owner in sorted(owners.items()):
+        result: Dict[int, List[Tuple[int, int, int]]] = {team.roster_id: [] for team in self.teams}
+        for (season, rnd, original), owner in sorted(owners.items()):
             if owner in result:
-                result[owner].append((season, rnd))
+                result[owner].append((season, rnd, original))
         return result
 
 

@@ -4,11 +4,11 @@ All numbers come from market values (see values.py). Nothing here calls an
 LLM; language models may only be used afterwards to explain these results.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from itertools import combinations
 from typing import Dict, Iterable, List, Optional, Sequence, Set
 
-from .sleeper import League, Team
+from .sleeper import League
 from .values import Asset, ValueBook
 
 # Heuristic: the Nth best asset on a side counts at DEPTH_DECAY**N of its value.
@@ -114,6 +114,7 @@ def build_team_assets(league: League, book: ValueBook) -> List[TeamAssets]:
         rounds = [r for r in book.pick_rounds if r <= max(1, league.draft_rounds)]
         ownership = league.pick_ownership(book.pick_years, rounds)
 
+    names = {t.roster_id: t.name for t in league.teams}
     result: List[TeamAssets] = []
     for team in league.teams:
         assets: List[Asset] = []
@@ -121,10 +122,12 @@ def build_team_assets(league: League, book: ValueBook) -> List[TeamAssets]:
             asset = book.player_by_sleeper_id(player_id)
             if asset:
                 assets.append(asset)
-        for season, rnd in ownership.get(team.roster_id, []):
+        for season, rnd, original in ownership.get(team.roster_id, []):
             pick = book.pick(season, rnd)
             if pick:
-                assets.append(pick)
+                # Each pick is a distinct asset even though same-round picks share a value.
+                label = pick.name if original == team.roster_id else f"{pick.name} (from {names.get(original, 'another team')})"
+                assets.append(replace(pick, key=f"{pick.key}@{original}", name=label))
         assets.sort(key=lambda a: a.value, reverse=True)
         result.append(TeamAssets(team.roster_id, team.name, assets))
     return result

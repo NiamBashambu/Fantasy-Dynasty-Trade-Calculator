@@ -1,138 +1,132 @@
 # Dynasty Trade Analyzer
 
-A web application that suggests and evaluates dynasty fantasy football trades using league data from the Sleeper API and (optionally) OpenAI.
+A small web app that prices dynasty fantasy football trades with market data and finds balanced trades in your Sleeper league.
 
-The project is designed to run **without a database**. All state is either fetched live from Sleeper, held in a short-lived in-process cache, stored in a signed cookie, or kept in the user's browser. See [PROJECT_GAPS.md](PROJECT_GAPS.md) for what is still missing and the plan to finish the project.
+There is **no database and no user accounts**. League data comes live from the Sleeper API, trade values come from the public FantasyCalc API, and everything is cached in memory (with a JSON file on disk as a safety net). Restarting the app loses nothing important.
 
-## Status
+## What it does
 
-This is a working prototype, not a finished product. Read [PROJECT_GAPS.md](PROJECT_GAPS.md) before deploying it anywhere public. Notable current limitations:
+- **Trade calculator**: enter players and draft picks for each side (for example `Ja'Marr Chase` and `2027 1st`) and get a fairness score, a verdict, and assets that could balance the deal. Works without a league.
+- **Trade suggestions**: connect a Sleeper league, pick your team, choose a strategy (contending, rebuilding, balanced), how even trades must be, and positions you need. The app searches every roster for 1-for-1, 2-for-1, and 1-for-2 trades that fit.
+- **League aware**: values are adjusted for Superflex vs 1 QB, PPR scoring, and league size. Draft pick ownership (including traded picks) comes from Sleeper.
+- **Optional AI explanations**: if you set `OPENAI_API_KEY`, a model writes short explanations of results. It never sets values, picks players, or scores fairness. Without a key, built-in text is used.
 
-- User accounts and sessions are held in process memory and are lost on every restart.
-- Without an OpenAI key, trade suggestions and calculator results are hardcoded mock data.
-- Payments (Stripe) are only partially wired and are not safe to enable.
-- There are no automated tests.
+## How trade values work
 
-## Features
+Values come from [FantasyCalc](https://www.fantasycalc.com), whose numbers are derived from real dynasty trades and updated regularly. For every asset the app has:
 
-- **Trade suggestions**: generate trade ideas for your team, tuned by strategy (contending, rebuilding, balanced), risk tolerance, and positional needs.
-- **Trade calculator**: enter the players on each side of a trade and get a fairness score and written analysis.
-- **Sleeper integration**: load a league by its Sleeper league ID and pick your team from the roster list.
-- **Usage limits**: a free tier with a capped number of suggestions, to control OpenAI cost.
-- **Responsive UI**: server-rendered Flask templates with a mobile-friendly layout.
+- a dynasty value for the league format,
+- a redraft value (used to judge "win now" fit),
+- age, position, team, and rank.
 
-## Quick Start
+Fairness is computed in plain Python:
 
-### Prerequisites
+1. For each side, sort assets by value and apply a small depth discount (each extra asset counts 92% of the previous one) because two mid-tier assets rarely equal one star. This constant is a tunable heuristic, not a market number. It lives in `dynasty/trades.py`.
+2. Fairness is `100 * smaller_total / larger_total`. 90 or higher reads as an even trade.
+3. The side that **receives** the larger package wins.
 
-- Python 3.9 or higher
-- A Sleeper league ID (the number in your league URL)
-- An OpenAI API key (optional; without one the app returns mock responses)
+Suggestions are found by search, then filtered by your strategy:
 
-### Installation
+- **Contending** requires more win-now (redraft) value coming back than going out.
+- **Rebuilding** requires a younger value-weighted age coming back, or draft capital.
+- **Balanced** scores both.
+- Stated position needs add to a trade's score. Each trade is limited to one reuse of any partner asset and two uses of any of yours, with at most two trades per partner.
 
-1. Clone the repository and enter it:
-   ```bash
-   git clone <your-repo-url>
-   cd Fantasy-Dynasty-Trade-Calculator
-   ```
+### Why not train a model?
 
-2. Create a virtual environment and install dependencies:
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
-   ```
+A model needs labeled data, meaning a ground-truth answer for "what is this player worth". That data is the private trade history that FantasyCalc and KeepTradeCut already aggregate and sell/publish as values. Training your own on public data would mean guessing values from stats, which is a worse, harder-to-maintain version of a free API. This project uses the market values directly and keeps the logic transparent and testable.
 
-3. Set environment variables (copy `env.example` to `.env` or export them):
-   ```bash
-   export SECRET_KEY='a-long-random-string'
-   export OPENAI_API_KEY='your-openai-api-key'   # optional
-   ```
+Limitations of the current approach:
 
-4. Run the app:
-   ```bash
-   python run.py
-   ```
+- No TE-premium or custom scoring adjustments beyond PPR and Superflex.
+- Values reflect the market, not your league's specific mood or needs.
+- Only players and picks FantasyCalc prices (roughly the top 400 plus picks 2027 to 2029) are considered; deep bench players are ignored.
+- Check FantasyCalc's terms before using this commercially, and keep the credit in the footer.
 
-5. Open http://localhost:5000
+## Quick start
 
-## How It Works
+Requires Python 3.9 or newer.
 
-1. **Connect a league**: enter your Sleeper league ID. The app fetches league info, users, and rosters from Sleeper.
-2. **Select your team**: choose your team from the league's managers.
-3. **Generate trades**: set your preferences and the app builds a prompt from the league data and asks OpenAI for suggestions.
-4. **Evaluate a trade**: use the calculator to score any proposed trade.
-
-## Data and State (No Database)
-
-| Data | Where it lives |
-|------|----------------|
-| Sleeper league, rosters, users | Fetched live from Sleeper, cached in memory with a TTL |
-| Sleeper NFL player list | Fetched from Sleeper, cached in memory (and optionally on disk) |
-| Signed-in state, selected league and team | Signed Flask session cookie |
-| Usage count / rate limit | In-memory counter keyed by client (resets on restart) |
-| Trade history and saved preferences | Browser `localStorage` (planned) |
-| Shared trades | Encoded in the share URL (planned) |
-
-Because nothing is persisted server-side, the app can run on any host with a single process, and restarting it never loses anything the user cannot trivially recreate. If you run more than one worker, in-memory caches and counters are per-worker; this is acceptable for caches and is a known tradeoff for rate limits.
-
-## Project Structure
-
+```bash
+git clone <your-repo-url>
+cd Fantasy-Dynasty-Trade-Calculator
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+python run.py
 ```
-Fantasy-Dynasty-Trade-Calculator/
-├── backend/
-│   ├── python_backend.py       # Flask app: routes, Sleeper client, OpenAI logic
-│   └── database.py             # Unused PostgreSQL code (to be removed)
-├── database/
-│   └── schema.sql              # Unused PostgreSQL schema (to be removed)
-├── frontend/
-│   ├── index.html              # Landing page and sign-in form
-│   └── dynasty_trade_analyzer.html   # Legacy standalone page (to be removed)
-├── templates/                  # Jinja templates for the app
-├── netlify/functions/app.py    # Experimental serverless wrapper (not working)
-├── config.py                   # Config classes (not yet used by the app)
-├── run.py                      # Local development entry point
-├── requirements.txt
-├── env.example
-├── DEPLOYMENT.md               # Outdated; assumes PostgreSQL and Netlify + Railway
-├── PROJECT_GAPS.md             # What is missing and what to do next
-└── README.md
+
+Open http://127.0.0.1:5000.
+
+Optional environment variables (see `env.example`):
+
+```bash
+export OPENAI_API_KEY='sk-...'   # AI-written explanations
+export SECRET_KEY='...'          # required when APP_ENV=production
+```
+
+Run the tests:
+
+```bash
+pytest
 ```
 
 ## Configuration
 
-Environment variables:
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `APP_ENV` | `development` | `production` requires `SECRET_KEY`, enables secure cookies, trusts proxy headers |
+| `SECRET_KEY` | random per process in dev | Signs the session cookie |
+| `OPENAI_API_KEY` | unset | Enables AI explanations |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Model used for explanations |
+| `LLM_CALLS_PER_HOUR` | `20` | Per-client cap on AI calls (falls back to built-in text) |
+| `REQUESTS_PER_MINUTE` | `60` | Per-client cap on form submissions |
+| `VALUES_CACHE_SECONDS` | `21600` | How long FantasyCalc values are cached in memory |
+| `LEAGUE_CACHE_SECONDS` | `300` | How long Sleeper league data is cached |
+| `CACHE_DIR` | `./.cache` | Where the on-disk copy of values is kept (safe to delete) |
+| `TRUST_PROXY` | on in production | Use `X-Forwarded-*` headers so rate limits see real client IPs |
 
-| Variable | Required | Purpose |
-|----------|----------|---------|
-| `SECRET_KEY` | Yes (production) | Signs the session cookie. Use a long random value. |
-| `OPENAI_API_KEY` | No | Enables real AI output. Without it the app returns mock data. |
-| `FLASK_ENV` | No | `development` or `production`. |
-| `STRIPE_*` | No | Reserved for a future paid tier. Not safe to enable yet. |
+## Where state lives
 
-The Sleeper API is public and needs no key.
+| Data | Location |
+|------|----------|
+| League, rosters, traded picks | Fetched from Sleeper, cached in memory for 5 minutes |
+| Trade values | Fetched from FantasyCalc, cached in memory for 6 hours, mirrored to `.cache/*.json` |
+| Selected league and team | Signed session cookie (IDs and display names only) |
+| Rate limit counters | In memory, per process |
+
+With more than one worker the caches and counters are per worker. That is fine for caches, and it means rate limits are approximate.
+
+## Project layout
+
+```
+dynasty/
+  __init__.py      app factory, security headers, error handlers, CSRF
+  config.py        environment-based configuration
+  sleeper.py       Sleeper API client and league model
+  values.py        FantasyCalc client, name and pick matching, disk cache
+  trades.py        fairness math and trade search
+  llm.py           optional OpenAI explanations (never sets values)
+  cache.py         TTL cache and rate limiter
+  routes.py        pages
+  templates/       Jinja templates
+  static/          CSS
+tests/             pytest suite (no network needed)
+wsgi.py            production entry point (gunicorn wsgi:app)
+run.py             local development entry point
+```
 
 ## Deployment
 
-Run a single service with a production WSGI server:
-
-```bash
-gunicorn --bind 0.0.0.0:$PORT backend.python_backend:app
-```
-
-Any host that runs a Python process works (Railway, Render, Fly.io, a small VPS). No database service is needed. Serving the frontend from a separate static host is not recommended while the app relies on server-rendered pages and cookie sessions.
-
-Before going live, complete the "Must fix before public release" list in [PROJECT_GAPS.md](PROJECT_GAPS.md). In particular: set a real `SECRET_KEY`, turn off debug mode, and serve over HTTPS.
+Deploy as a single web service. No database or other service is needed. See [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Troubleshooting
 
-- **Module not found**: activate your virtual environment and run `pip install -r requirements.txt`.
-- **Mock results instead of AI results**: `OPENAI_API_KEY` is not set, or the OpenAI call failed. Check the console logs.
-- **Sleeper connection fails**: verify the league ID. Sleeper leagues are readable without authentication.
-- **Signed out after restarting the server**: expected for now, since accounts are stored in memory.
-- **Template not found**: run the app from the repository root with `python run.py`.
+- **"Trade values are temporarily unavailable"**: FantasyCalc could not be reached and no cached copy exists yet. Try again shortly; once fetched, values survive outages.
+- **"No Sleeper league was found"**: use the numeric ID from the league URL on Sleeper, not the league name.
+- **A player is not found in the calculator**: names must match FantasyCalc spellings (punctuation, accents, and Jr/Sr suffixes are ignored). Picks use `2027 1st`; only 2027 to 2029 are priced.
+- **Everything resets after a restart in development**: without `SECRET_KEY` a new key is generated each run, which signs you out. Set one to stay signed in.
 
-## License
+## Remaining work
 
-No license has been chosen yet. Add a `LICENSE` file before sharing the code publicly.
+See [PROJECT_GAPS.md](PROJECT_GAPS.md).
